@@ -201,7 +201,6 @@ export const audioEngine: AudioEngineContract = {
     source.connect(gainNode);
     if (state.filterNode) {
       gainNode.connect(state.filterNode);
-      // 直接连接到 master
       state.filterNode.connect(state.masterGain!);
     } else {
       gainNode.connect(state.masterGain!);
@@ -248,7 +247,6 @@ export const audioEngine: AudioEngineContract = {
   },
 
   setPadPitch(padId: PadId, pitch: number): void {
-    // 暂时只做日志，完整实现在 triggerPad 中读取 store
     console.log(`[AudioEngine] Pad ${padId} pitch 设置为 ${pitch}`);
   },
 
@@ -303,6 +301,19 @@ export const audioEngine: AudioEngineContract = {
     console.log('[AudioEngine] FX 已应用:', fx);
   },
 };
+
+// ============================================================
+// 4. 单独导出核心方法供其他模块（如 Sequencer）使用
+// ============================================================
+
+export const triggerPad = audioEngine.triggerPad.bind(audioEngine);
+export const stopAllSounds = audioEngine.stopAllSounds.bind(audioEngine);
+export const initAudioEngine = audioEngine.initAudioEngine.bind(audioEngine);
+export const loadSampleBuffer = audioEngine.loadSampleBuffer.bind(audioEngine);
+export const assignSampleToPad = audioEngine.assignSampleToPad.bind(audioEngine);
+export const setPadVolume = audioEngine.setPadVolume.bind(audioEngine);
+export const setPadPitch = audioEngine.setPadPitch.bind(audioEngine);
+export const applyFxState = audioEngine.applyFxState.bind(audioEngine);
 
 if (import.meta.env.DEV) {
   (window as any).__audioState = state;
