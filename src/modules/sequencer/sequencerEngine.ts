@@ -1,116 +1,92 @@
-import { triggerPad } from '../audio/audioEngine';
+// src/modules/sequencer/sequencerEngine.ts
+import { audioEngine } from '../audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 
-let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-function getStepIntervalMs(bpm: number): number {
-  // 16th note interval: (60 / bpm) / 4 * 1000 = 15000 / bpm
-  return Math.max(25, 15000 / bpm);
+export interface SequencerEngineContract {
+  playSequencer(): void;
+  stopSequencer(): void;
+  resetSequencer(): void;
+  setBpm(bpm: number): void;
+  toggleStep(padId: string, stepIndex: number): void;
+  setStepVelocity(padId: string, stepIndex: number, velocity: number): void;
+  getCurrentStep(): number;
 }
 
-function tick(): void {
-  const state = useProjectStore.getState();
+class SequencerEngineImpl implements SequencerEngineContract {
+  private timerId: number | null = null;
 
-  if (!state.pattern.isPlaying) return;
+  playSequencer(): void {
+    const { setSequencerPlaying } = useProjectStore.getState();
+    setSequencerPlaying(true);
+    this.runSequencerLoop();
+  }
 
-  const { pattern, pads } = state;
-  const step = pattern.currentStep;
-
-  // Trigger every active, non-muted pad at the current step
-  for (const pad of pads) {
-    if (pad.muted) continue;
-
-    const stepState = pattern.steps[pad.id]?.[step];
-
-    if (stepState?.active && pad.sampleId) {
-      triggerPad(pad.id, stepState.velocity);
+  stopSequencer(): void {
+    const { setSequencerPlaying } = useProjectStore.getState();
+    setSequencerPlaying(false);
+    if (this.timerId) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
     }
   }
 
-  // Advance to the next step
-  state.setCurrentStep((step + 1) % 16);
-}
-
-function scheduleNext(bpm: number, swing: number): void {
-  const state = useProjectStore.getState();
-
-  if (!state.pattern.isPlaying) return;
-
-  const interval = getStepIntervalMs(bpm);
-  const nextStep = state.pattern.currentStep;
-
-  // Apply swing delay on odd-numbered steps (the "off" 16th notes)
-  const swingOffset = nextStep % 2 === 1 ? swing * interval : 0;
-  const delay = Math.max(5, interval + swingOffset);
-
-  timeoutId = setTimeout(() => {
-    tick();
-    scheduleNext(bpm, swing);
-  }, delay);
-}
-
-export function playSequencer(): void {
-  const state = useProjectStore.getState();
-
-  if (state.pattern.isPlaying) return;
-
-  state.setSequencerPlaying(true);
-
-  // Fire the first step immediately for responsive feel
-  tick();
-
-  // Schedule subsequent steps
-  scheduleNext(state.pattern.bpm, state.pattern.swing);
-}
-
-export function stopSequencer(): void {
-  if (timeoutId !== null) {
-    clearTimeout(timeoutId);
-    timeoutId = null;
+  resetSequencer(): void {
+    const { setCurrentStep } = useProjectStore.getState();
+    setCurrentStep(0);
+    this.stopSequencer();
   }
 
-  useProjectStore.getState().setSequencerPlaying(false);
-}
+  setBpm(bpm: number): void {
+    const { setBpm } = useProjectStore.getState();
+    setBpm(bpm);
+  }
 
-export function resetSequencer(): void {
-  stopSequencer();
-  useProjectStore.getState().setCurrentStep(0);
-}
+  toggleStep(padId: string, stepIndex: number): void {
+    const { toggleStep } = useProjectStore.getState();
+    toggleStep(padId, stepIndex);
+  }
 
-export function setBpm(bpm: number): void {
-  const clamped = Math.min(220, Math.max(40, Math.round(bpm)));
-  const state = useProjectStore.getState();
+  setStepVelocity(padId: string, stepIndex: number, velocity: number): void {
+    const { setStepVelocity } = useProjectStore.getState();
+    setStepVelocity(padId, stepIndex, velocity);
+  }
 
-  state.setBpm(clamped);
+  getCurrentStep(): number {
+    const state = useProjectStore.getState();
+    return state.pattern.currentStep;
+  }
 
-  // Restart playback with new timing if currently active
-  if (state.pattern.isPlaying) {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
+  private runSequencerLoop(): void {
+    const state = useProjectStore.getState();
+    const { pattern, pads } = state;
+
+    if (!pattern.isPlaying) {
+      return;
     }
 
-    scheduleNext(clamped, state.pattern.swing);
-  }
-}
+    const currentStep = pattern.currentStep;
+    const bpm = pattern.bpm;
+    const stepDuration = 60000 / bpm / 4; // 16分音符的毫秒数
 
-export function setSwing(swing: number): void {
-  const clamped = Math.min(1, Math.max(0, swing));
-  const state = useProjectStore.getState();
-
-  state.setSwing(clamped);
-
-  // Restart timing so swing takes effect immediately
-  if (state.pattern.isPlaying) {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
+    // 触发当前步进中所有激活的 Pad
+    for (const pad of pads) {
+      const steps = pattern.steps[pad.id];
+      if (steps && steps[currentStep] && steps[currentStep].active) {
+        // 使用 audioEngine.triggerPad 播放
+        audioEngine.triggerPad(pad.id, steps[currentStep].velocity || 0.8);
+      }
     }
 
-    scheduleNext(state.pattern.bpm, clamped);
+    // 更新到下一步
+    const nextStep = (currentStep + 1) % 16;
+    const { setCurrentStep } = useProjectStore.getState();
+    setCurrentStep(nextStep);
+
+    // 调度下一次循环
+    this.timerId = setTimeout(() => {
+      this.runSequencerLoop();
+    }, stepDuration);
   }
 }
 
-export function getCurrentStep(): number {
-  return useProjectStore.getState().pattern.currentStep;
-}
+export const sequencerEngine = new SequencerEngineImpl();
