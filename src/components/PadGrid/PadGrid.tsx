@@ -1,3 +1,4 @@
+// src/components/PadGrid/PadGrid.tsx
 import { useEffect } from 'react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { audioEngine } from '../../modules/audio/audioEngine';
@@ -23,9 +24,6 @@ const KEYBOARD_MAP: Record<string, number> = {
   '4': 15,
 };
 
-// 键盘按键标签 (用于UI显示)
-const KEY_LABELS = ['Q', 'W', 'E', 'R', 'A', 'S', 'D', 'F', 'Z', 'X', 'C', 'V', '1', '2', '3', '4'];
-
 export function PadGrid() {
   const pads = useProjectStore((state) => state.pads);
   const samples = useProjectStore((state) => state.samples);
@@ -35,7 +33,7 @@ export function PadGrid() {
     audioEngine.triggerPad(padId, velocity);
   };
 
-  // 键盘快捷键监听
+  // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 如果用户正在输入框内，不触发
@@ -61,9 +59,11 @@ export function PadGrid() {
   }, [pads]);
 
   return (
-    <div className="rounded border border-line bg-panel p-4">
-      <h2 className="mb-3 text-sm font-bold uppercase text-neutral-200">Pad Grid</h2>
-      <div className="grid grid-cols-4 gap-3">
+    <div className="p-4">
+      <h2 className="text-sm font-mono text-gray-400 uppercase tracking-wider mb-3">
+        Pad Grid · 键盘: Q W E R / A S D F / Z X C V / 1 2 3 4
+      </h2>
+      <div className="grid grid-cols-4 gap-3 max-w-md">
         {pads.map((pad, index) => {
           const sample = samples.find((s) => s.id === pad.sampleId);
           const hasSample = !!pad.sampleId;
@@ -82,22 +82,19 @@ export function PadGrid() {
                 flex flex-col items-center justify-center
               `}
             >
-              <span className="absolute left-2 top-1 text-xs text-gray-400">
-                {KEY_LABELS[index]}
+              <span className="text-xs text-gray-400 absolute top-1 left-2 font-mono">
+                {['Q','W','E','R','A','S','D','F','Z','X','C','V','1','2','3','4'][index]}
               </span>
-              <span className="truncate px-1 text-xs">
+              <span className="text-xs truncate max-w-[80%]">
                 {pad.name || `Pad ${index + 1}`}
               </span>
               {hasSample && (
-                <span className="mt-0.5 text-[10px] text-green-400">●</span>
+                <span className="text-[10px] text-green-400 mt-0.5">●</span>
               )}
             </button>
           );
         })}
       </div>
-      <p className="mt-3 text-xs text-gray-500">
-        键盘触发: Q W E R / A S D F / Z X C V / 1 2 3 4
-      </p>
     </div>
   );
 }
