@@ -1,10 +1,8 @@
 export type PadId = string;
 export type SampleId = string;
-export type PatternId = string;
 export type StepIndex = number;
 export type ChopParts = 4 | 8 | 16;
 export type FxParamName = keyof FxState;
-export type NoteLength = 4 | 8 | 16 | 32;
 
 export const PAD_COUNT = 16;
 export const STEP_COUNT = 16;
@@ -57,14 +55,6 @@ export interface PatternState {
   isPlaying: boolean;
   currentStep: number;
   steps: Record<PadId, StepState[]>;
-  swing: number;
-  noteLength: NoteLength;
-}
-
-export interface Pattern {
-  id: PatternId;
-  name: string;
-  steps: Record<PadId, StepState[]>;
 }
 
 export interface FxState {
@@ -78,8 +68,6 @@ export interface ProjectState {
   pads: PadState[];
   samples: SampleAsset[];
   pattern: PatternState;
-  patterns: Pattern[];
-  activePatternId: PatternId;
   fx: FxState;
 }
 
