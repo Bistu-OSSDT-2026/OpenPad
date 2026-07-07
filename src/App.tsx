@@ -1,23 +1,14 @@
-import { useEffect } from 'react';
 import { FxPanel } from './components/FxPanel/FxPanel';
 import { GesturePanel } from './components/GesturePanel/GesturePanel';
 import { Layout } from './components/Layout/Layout';
 import { PadGrid } from './components/PadGrid/PadGrid';
-// import { Sequencer } from './components/Sequencer/Sequencer';  // ← 暂时注释掉
+import { Sequencer } from './components/Sequencer/Sequencer';
 import { WaveformEditor } from './components/WaveformEditor/WaveformEditor';
 import { useProjectStore } from './store/useProjectStore';
-import { audioEngine } from './modules/audio/audioEngine';
 
 export default function App() {
   const exportProjectJson = useProjectStore((state) => state.exportProjectJson);
   const loadProjectJson = useProjectStore((state) => state.loadProjectJson);
-
-  // ===== 初始化 AudioEngine =====
-  useEffect(() => {
-    audioEngine.initAudioEngine().catch((err) => {
-      console.warn('AudioEngine 初始化失败:', err);
-    });
-  }, []);
 
   function handleExport() {
     const blob = new Blob([exportProjectJson()], { type: 'application/json' });
@@ -69,7 +60,7 @@ export default function App() {
           </div>
         </div>
       </section>
-      {/* <Sequencer /> */}  {/* ← 暂时注释掉 */}
+      <Sequencer />
     </Layout>
   );
 }
