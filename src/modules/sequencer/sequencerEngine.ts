@@ -72,7 +72,7 @@ class SequencerEngineImpl implements SequencerEngineContract {
     for (const pad of pads) {
       const steps = pattern.steps[pad.id];
       if (steps && steps[currentStep] && steps[currentStep].active) {
-        // 使用 audioEngine.triggerPad 播放
+
         audioEngine.triggerPad(pad.id, steps[currentStep].velocity || 0.8);
       }
     }
