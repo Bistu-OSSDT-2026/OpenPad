@@ -72,7 +72,6 @@ class SequencerEngineImpl implements SequencerEngineContract {
     for (const pad of pads) {
       const steps = pattern.steps[pad.id];
       if (steps && steps[currentStep] && steps[currentStep].active) {
-
         audioEngine.triggerPad(pad.id, steps[currentStep].velocity || 0.8);
       }
     }
@@ -90,3 +89,15 @@ class SequencerEngineImpl implements SequencerEngineContract {
 }
 
 export const sequencerEngine = new SequencerEngineImpl();
+
+// ============================================================
+// 单独导出方法供 UI 组件使用
+// ============================================================
+
+export const playSequencer = sequencerEngine.playSequencer.bind(sequencerEngine);
+export const stopSequencer = sequencerEngine.stopSequencer.bind(sequencerEngine);
+export const resetSequencer = sequencerEngine.resetSequencer.bind(sequencerEngine);
+export const setBpm = sequencerEngine.setBpm.bind(sequencerEngine);
+export const toggleStep = sequencerEngine.toggleStep.bind(sequencerEngine);
+export const setStepVelocity = sequencerEngine.setStepVelocity.bind(sequencerEngine);
+export const getCurrentStep = sequencerEngine.getCurrentStep.bind(sequencerEngine);
