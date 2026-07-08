@@ -16,9 +16,9 @@ export function PadGrid() {
 
           return (
             <button
-              className="aspect-square rounded-md border border-neutral-700 bg-neutral-800 p-3 text-left shadow-pad transition hover:border-signal hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-signal"
               key={pad.id}
               type="button"
+              className="aspect-square rounded-md border border-neutral-700 bg-neutral-800 p-3 text-left shadow-pad transition hover:border-signal hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-signal"
             >
               <span className="block text-xl font-black text-white">{pad.name}</span>
               <span className="mt-2 block truncate text-xs text-neutral-400">
