@@ -4,13 +4,13 @@ export async function initAudioEngine(): Promise<void> {
   return Promise.resolve();
 }
 
-export async function loadSampleBuffer(_sample: SampleAsset): Promise<void> {
+export function loadSampleBuffer(_sample: SampleAsset): Promise<void> {
   return Promise.resolve();
 }
 
 export function assignSampleToPad(_padId: PadId, _sampleId: SampleId): void {}
 
-export function triggerPad(_padId: PadId, _velocity = 1): void {}
+export function triggerPad(_padId: PadId, _velocity: number = 1): void {}
 
 export function stopAllSounds(): void {}
 
