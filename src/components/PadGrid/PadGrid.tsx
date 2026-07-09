@@ -20,6 +20,7 @@ const padKeys = new Map([
   ['3', 'pad-15'],
   ['4', 'pad-16'],
 ]);
+const MAX_PAD_SLICE_LENGTH_SECONDS = 3;
 
 function triggerPadFromUserInput(padId: string): void {
   void initAudioEngine().finally(() => triggerPad(padId));
@@ -58,7 +59,12 @@ export function PadGrid() {
         {pads.map((pad) => {
           const sample = samples.find((item) => item.id === pad.sampleId);
           const sampleLength = sample ? Math.max(0.1, sample.endTime - sample.startTime) : 0;
-          const maxLength = sample ? Math.max(0.1, sample.duration - sample.startTime) : 8;
+          const maxLength = sample
+            ? Math.max(
+                0.1,
+                Math.min(MAX_PAD_SLICE_LENGTH_SECONDS, sample.duration - sample.startTime),
+              )
+            : MAX_PAD_SLICE_LENGTH_SECONDS;
 
           return (
             <div
@@ -83,7 +89,7 @@ export function PadGrid() {
                 <input
                   className="block h-1 w-full accent-signal"
                   disabled={!sample}
-                  max={Math.min(8, maxLength)}
+                  max={maxLength}
                   min={0.1}
                   onChange={(event) => {
                     if (!sample) {
@@ -99,7 +105,7 @@ export function PadGrid() {
                   }}
                   step={0.05}
                   type="range"
-                  value={sample ? Math.min(sampleLength, Math.min(8, maxLength)) : 0.1}
+                  value={sample ? Math.min(sampleLength, maxLength) : 0.1}
                 />
               </label>
             </div>
