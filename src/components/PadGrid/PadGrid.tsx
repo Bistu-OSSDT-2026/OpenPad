@@ -1,8 +1,46 @@
+import { useEffect } from 'react';
+import { triggerPad } from '../../modules/audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
+
+const padKeys = new Map([
+  ['q', 'pad-1'],
+  ['w', 'pad-2'],
+  ['e', 'pad-3'],
+  ['r', 'pad-4'],
+  ['a', 'pad-5'],
+  ['s', 'pad-6'],
+  ['d', 'pad-7'],
+  ['f', 'pad-8'],
+  ['z', 'pad-9'],
+  ['x', 'pad-10'],
+  ['c', 'pad-11'],
+  ['v', 'pad-12'],
+  ['1', 'pad-13'],
+  ['2', 'pad-14'],
+  ['3', 'pad-15'],
+  ['4', 'pad-16'],
+]);
 
 export function PadGrid() {
   const pads = useProjectStore((state) => state.pads);
   const samples = useProjectStore((state) => state.samples);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.repeat) {
+        return;
+      }
+
+      const padId = padKeys.get(event.key.toLowerCase());
+
+      if (padId) {
+        triggerPad(padId);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <section className="rounded border border-line bg-panel p-4">
@@ -18,6 +56,7 @@ export function PadGrid() {
             <button
               key={pad.id}
               type="button"
+              onClick={() => triggerPad(pad.id)}
               className="aspect-square rounded-md border border-neutral-700 bg-neutral-800 p-3 text-left shadow-pad transition hover:border-signal hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-signal"
             >
               <span className="block text-xl font-black text-white">{pad.name}</span>

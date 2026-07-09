@@ -1,28 +1,78 @@
-import type { PadId } from '../../types/project';
+import { triggerPad } from '../audio/audioEngine';
+import { useProjectStore } from '../../store/useProjectStore';
+import type { PadId, StepIndex } from '../../types/project';
 
-let bpm = 96;
-let currentStep = 0;
+let timerId: number | undefined;
 
-export function playSequencer(): void {}
+function getStepIntervalMs(bpm: number): number {
+  return (60_000 / Math.max(40, Math.min(220, bpm))) / 4;
+}
 
-export function stopSequencer(): void {}
+function clearSequencerTimer(): void {
+  if (timerId !== undefined) {
+    window.clearInterval(timerId);
+    timerId = undefined;
+  }
+}
+
+function tick(): void {
+  const state = useProjectStore.getState();
+  const stepIndex = state.pattern.currentStep;
+
+  for (const pad of state.pads) {
+    const step = state.pattern.steps[pad.id]?.[stepIndex];
+
+    if (step?.active) {
+      triggerPad(pad.id, step.velocity);
+    }
+  }
+
+  useProjectStore.getState().setCurrentStep((stepIndex + 1) % 16);
+}
+
+export function playSequencer(): void {
+  clearSequencerTimer();
+  const { pattern, setSequencerPlaying } = useProjectStore.getState();
+
+  setSequencerPlaying(true);
+  timerId = window.setInterval(tick, getStepIntervalMs(pattern.bpm));
+}
+
+export function stopSequencer(): void {
+  clearSequencerTimer();
+  useProjectStore.getState().setSequencerPlaying(false);
+}
 
 export function resetSequencer(): void {
-  currentStep = 0;
+  clearSequencerTimer();
+  const store = useProjectStore.getState();
+  store.setCurrentStep(0);
+  store.setSequencerPlaying(false);
 }
 
-export function setBpm(nextBpm: number): void {
-  bpm = nextBpm;
+export function setBpm(bpm: number): void {
+  const store = useProjectStore.getState();
+  const wasPlaying = store.pattern.isPlaying;
+
+  store.setBpm(bpm);
+
+  if (wasPlaying) {
+    playSequencer();
+  }
 }
 
-export function toggleStep(_padId: PadId, _stepIndex: number): void {}
+export function toggleStep(padId: PadId, stepIndex: StepIndex): void {
+  useProjectStore.getState().toggleStep(padId, stepIndex);
+}
 
-export function setStepVelocity(_padId: PadId, _stepIndex: number, _velocity: number): void {}
+export function setStepVelocity(padId: PadId, stepIndex: StepIndex, velocity: number): void {
+  useProjectStore.getState().setStepVelocity(padId, stepIndex, velocity);
+}
 
 export function getSequencerBpm(): number {
-  return bpm;
+  return useProjectStore.getState().pattern.bpm;
 }
 
 export function getCurrentStep(): number {
-  return currentStep;
+  return useProjectStore.getState().pattern.currentStep;
 }

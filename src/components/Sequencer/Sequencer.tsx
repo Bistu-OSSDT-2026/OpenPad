@@ -1,11 +1,15 @@
+import {
+  playSequencer,
+  resetSequencer,
+  setBpm as setEngineBpm,
+  stopSequencer,
+  toggleStep as toggleEngineStep,
+} from '../../modules/sequencer/sequencerEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 
 export function Sequencer() {
   const pads = useProjectStore((state) => state.pads);
   const pattern = useProjectStore((state) => state.pattern);
-  const setBpm = useProjectStore((state) => state.setBpm);
-  const setSequencerPlaying = useProjectStore((state) => state.setSequencerPlaying);
-  const toggleStep = useProjectStore((state) => state.toggleStep);
 
   return (
     <section className="rounded border border-line bg-panel p-4">
@@ -16,16 +20,23 @@ export function Sequencer() {
             className="w-20 rounded border border-line bg-neutral-950 px-2 py-1 text-sm"
             max={220}
             min={40}
-            onChange={(event) => setBpm(Number(event.target.value))}
+            onChange={(event) => setEngineBpm(Number(event.target.value))}
             type="number"
             value={pattern.bpm}
           />
           <button
             className="rounded bg-warning px-3 py-2 text-xs font-bold text-neutral-950"
-            onClick={() => setSequencerPlaying(!pattern.isPlaying)}
+            onClick={() => (pattern.isPlaying ? stopSequencer() : playSequencer())}
             type="button"
           >
             {pattern.isPlaying ? 'Stop' : 'Play'}
+          </button>
+          <button
+            className="rounded border border-line px-3 py-2 text-xs font-bold text-neutral-200"
+            onClick={resetSequencer}
+            type="button"
+          >
+            Reset
           </button>
         </div>
       </div>
@@ -45,7 +56,7 @@ export function Sequencer() {
                     pattern.currentStep === index ? 'ring-2 ring-warning' : '',
                   ].join(' ')}
                   key={`${pad.id}-${index}`}
-                  onClick={() => toggleStep(pad.id, index)}
+                  onClick={() => toggleEngineStep(pad.id, index)}
                   type="button"
                 >
                   {index + 1}
