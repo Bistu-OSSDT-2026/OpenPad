@@ -8,6 +8,23 @@ const padAssignments = new Map<PadId, SampleId>();
 const activeSources = new Set<AudioBufferSourceNode>();
 const activeElements = new Set<HTMLAudioElement>();
 const activeElementsByPad = new Map<PadId, HTMLAudioElement>();
+const activeElementNodes = new Map<HTMLAudioElement, { gain: GainNode; source: MediaElementAudioSourceNode }>();
+let fxInputGain: GainNode | null = null;
+let masterGain: GainNode | null = null;
+let filterNode: BiquadFilterNode | null = null;
+let reverbNode: ConvolverNode | null = null;
+let reverbGain: GainNode | null = null;
+let reverbDryGain: GainNode | null = null;
+let delayNode: DelayNode | null = null;
+let delayFeedbackGain: GainNode | null = null;
+let delayDryGain: GainNode | null = null;
+let bitcrusherNode: WaveShaperNode | null = null;
+let currentFx: FxState = {
+  filterCutoff: 8400,
+  reverbAmount: 0.18,
+  delayFeedback: 0.22,
+  bitcrusherAmount: 0,
+};
 
 function getAudioContext(): AudioContext {
   const AudioContextCtor =
@@ -33,6 +50,101 @@ async function ensureAudioReady(): Promise<AudioContext> {
   }
 
   return context;
+}
+
+function createReverbImpulse(context: AudioContext, duration: number, decay: number): AudioBuffer {
+  const length = Math.floor(context.sampleRate * duration);
+  const buffer = context.createBuffer(2, length, context.sampleRate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+
+  for (let index = 0; index < length; index += 1) {
+    const envelope = Math.exp(-(index / length) * decay);
+    left[index] = (Math.random() * 2 - 1) * envelope;
+    right[index] = (Math.random() * 2 - 1) * envelope;
+  }
+
+  return buffer;
+}
+
+function createBitcrusherCurve(amount: number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(new ArrayBuffer(256 * Float32Array.BYTES_PER_ELEMENT));
+  const clamped = Math.min(1, Math.max(0, amount));
+  const steps = clamped <= 0 ? 128 : Math.max(2, Math.round(32 - 30 * clamped));
+
+  for (let index = 0; index < curve.length; index += 1) {
+    const value = (index - 128) / 128;
+    curve[index] = clamped <= 0 ? value : Math.min(1, Math.max(-1, Math.round(value * steps) / steps));
+  }
+
+  return curve;
+}
+
+function ensureFxGraph(context: AudioContext): void {
+  if (fxInputGain && masterGain && filterNode && bitcrusherNode) {
+    return;
+  }
+
+  fxInputGain = context.createGain();
+
+  masterGain = context.createGain();
+  masterGain.gain.value = 0.9;
+  masterGain.connect(context.destination);
+
+  bitcrusherNode = context.createWaveShaper();
+  bitcrusherNode.curve = createBitcrusherCurve(currentFx.bitcrusherAmount);
+
+  filterNode = context.createBiquadFilter();
+  filterNode.type = 'lowpass';
+  filterNode.frequency.value = currentFx.filterCutoff;
+  filterNode.Q.value = 1;
+
+  reverbNode = context.createConvolver();
+  reverbNode.buffer = createReverbImpulse(context, 1.2, 4);
+
+  reverbGain = context.createGain();
+  reverbGain.gain.value = currentFx.reverbAmount;
+
+  reverbDryGain = context.createGain();
+  reverbDryGain.gain.value = 1 - currentFx.reverbAmount;
+
+  delayNode = context.createDelay(2);
+  delayNode.delayTime.value = 0.3;
+
+  delayFeedbackGain = context.createGain();
+  delayFeedbackGain.gain.value = currentFx.delayFeedback;
+
+  delayDryGain = context.createGain();
+  delayDryGain.gain.value = 0.35;
+
+  fxInputGain.connect(bitcrusherNode);
+  bitcrusherNode.connect(filterNode);
+  filterNode.connect(reverbDryGain);
+  reverbDryGain.connect(masterGain);
+  filterNode.connect(reverbNode);
+  reverbNode.connect(reverbGain);
+  reverbGain.connect(masterGain);
+  filterNode.connect(delayNode);
+  delayNode.connect(delayDryGain);
+  delayDryGain.connect(masterGain);
+  delayNode.connect(delayFeedbackGain);
+  delayFeedbackGain.connect(delayNode);
+}
+
+function cleanupAudioElement(audio: HTMLAudioElement, padId?: PadId): void {
+  audio.pause();
+  activeElements.delete(audio);
+
+  if (padId && activeElementsByPad.get(padId) === audio) {
+    activeElementsByPad.delete(padId);
+  }
+
+  const nodes = activeElementNodes.get(audio);
+  if (nodes) {
+    nodes.source.disconnect();
+    nodes.gain.disconnect();
+    activeElementNodes.delete(audio);
+  }
 }
 
 async function decodeSample(sample: SampleAsset): Promise<AudioBuffer> {
@@ -80,7 +192,8 @@ async function ensureSampleBuffer(sample: SampleAsset): Promise<void> {
 }
 
 export async function initAudioEngine(): Promise<void> {
-  await ensureAudioReady();
+  const context = await ensureAudioReady();
+  ensureFxGraph(context);
 }
 
 export async function loadSampleBuffer(sample: SampleAsset): Promise<void> {
@@ -102,9 +215,7 @@ export function triggerPad(padId: PadId, velocity = 1): void {
 
   const previousAudio = activeElementsByPad.get(padId);
   if (previousAudio) {
-    previousAudio.pause();
-    activeElements.delete(previousAudio);
-    activeElementsByPad.delete(padId);
+    cleanupAudioElement(previousAudio, padId);
   }
 
   const audio = new Audio(sample.url);
@@ -118,27 +229,29 @@ export function triggerPad(padId: PadId, velocity = 1): void {
   activeElements.add(audio);
   activeElementsByPad.set(padId, audio);
   audio.onended = () => {
-    activeElements.delete(audio);
-    if (activeElementsByPad.get(padId) === audio) {
-      activeElementsByPad.delete(padId);
-    }
+    cleanupAudioElement(audio, padId);
   };
 
   window.setTimeout(() => {
-    audio.pause();
-    activeElements.delete(audio);
-    if (activeElementsByPad.get(padId) === audio) {
-      activeElementsByPad.delete(padId);
-    }
+    cleanupAudioElement(audio, padId);
   }, durationMs);
 
-  void audio.play().catch((error: unknown) => {
-    activeElements.delete(audio);
-    if (activeElementsByPad.get(padId) === audio) {
-      activeElementsByPad.delete(padId);
-    }
-    console.error(error);
-  });
+  void initAudioEngine()
+    .then(() => {
+      const context = getAudioContext();
+      const mediaSource = context.createMediaElementSource(audio);
+      const gain = context.createGain();
+      gain.gain.value = Math.max(0, Math.min(1, pad.volume * velocity));
+      mediaSource.connect(gain);
+      gain.connect(fxInputGain ?? context.destination);
+      activeElementNodes.set(audio, { gain, source: mediaSource });
+
+      return audio.play();
+    })
+    .catch((error: unknown) => {
+      cleanupAudioElement(audio, padId);
+      console.error(error);
+    });
 }
 
 export function stopAllSounds(): void {
@@ -153,11 +266,12 @@ export function stopAllSounds(): void {
   activeSources.clear();
 
   for (const audio of activeElements) {
-    audio.pause();
+    cleanupAudioElement(audio);
   }
 
   activeElements.clear();
   activeElementsByPad.clear();
+  activeElementNodes.clear();
 }
 
 export function setPadVolume(padId: PadId, volume: number): void {
@@ -168,6 +282,37 @@ export function setPadPitch(padId: PadId, pitch: number): void {
   useProjectStore.getState().updatePad(padId, { pitch });
 }
 
-export function applyFxState(_fx: Partial<FxState>): void {
-  // Gesture FX is intentionally out of scope for the pre-gesture baseline.
+export function applyFxState(fx: Partial<FxState>): void {
+  currentFx = { ...currentFx, ...fx };
+
+  if (!audioContext) {
+    return;
+  }
+
+  ensureFxGraph(audioContext);
+
+  if (fx.filterCutoff !== undefined && filterNode) {
+    filterNode.frequency.setValueAtTime(
+      Math.min(12000, Math.max(200, fx.filterCutoff)),
+      audioContext.currentTime,
+    );
+  }
+
+  if (fx.reverbAmount !== undefined && reverbGain) {
+    const value = Math.min(1, Math.max(0, fx.reverbAmount));
+    reverbGain.gain.setValueAtTime(value, audioContext.currentTime);
+    reverbDryGain?.gain.setValueAtTime(1 - value, audioContext.currentTime);
+  }
+
+  if (fx.delayFeedback !== undefined && delayFeedbackGain && delayNode) {
+    delayFeedbackGain.gain.setValueAtTime(
+      Math.min(0.95, Math.max(0, fx.delayFeedback)),
+      audioContext.currentTime,
+    );
+    delayNode.delayTime.setValueAtTime(0.3, audioContext.currentTime);
+  }
+
+  if (fx.bitcrusherAmount !== undefined && bitcrusherNode) {
+    bitcrusherNode.curve = createBitcrusherCurve(fx.bitcrusherAmount);
+  }
 }
