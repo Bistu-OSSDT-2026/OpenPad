@@ -6,6 +6,7 @@ const sampleBuffers = new Map<SampleId, AudioBuffer>();
 const loadingBuffers = new Map<SampleId, Promise<void>>();
 const padAssignments = new Map<PadId, SampleId>();
 const activeSources = new Set<AudioBufferSourceNode>();
+const activeSourcesByPad = new Map<PadId, Set<AudioBufferSourceNode>>();
 const activeElements = new Set<HTMLAudioElement>();
 const activeElementsByPad = new Map<PadId, HTMLAudioElement>();
 const activeElementNodes = new Map<HTMLAudioElement, { gain: GainNode; source: MediaElementAudioSourceNode }>();
@@ -155,6 +156,36 @@ function cleanupAudioElement(audio: HTMLAudioElement, padId?: PadId): void {
   }
 }
 
+function cleanupAudioSource(source: AudioBufferSourceNode, padId: PadId): void {
+  activeSources.delete(source);
+
+  const padSources = activeSourcesByPad.get(padId);
+  if (padSources) {
+    padSources.delete(source);
+    if (padSources.size === 0) {
+      activeSourcesByPad.delete(padId);
+    }
+  }
+
+  source.disconnect();
+}
+
+function stopPadPlayback(padId: PadId): void {
+  const previousAudio = activeElementsByPad.get(padId);
+  if (previousAudio) {
+    cleanupAudioElement(previousAudio, padId);
+  }
+
+  for (const source of Array.from(activeSourcesByPad.get(padId) ?? [])) {
+    try {
+      source.stop();
+    } catch {
+      // Source may already have ended.
+    }
+    cleanupAudioSource(source, padId);
+  }
+}
+
 async function decodeSample(sample: SampleAsset): Promise<AudioBuffer> {
   const context = await ensureAudioReady();
   const response = await fetch(sample.url);
@@ -221,9 +252,35 @@ export function triggerPad(padId: PadId, velocity = 1): void {
     return;
   }
 
-  const previousAudio = activeElementsByPad.get(padId);
-  if (previousAudio) {
-    cleanupAudioElement(previousAudio, padId);
+  stopPadPlayback(padId);
+
+  const cachedBuffer = sampleBuffers.get(sample.id);
+  if (cachedBuffer) {
+    void initAudioEngine()
+      .then(() => {
+        const context = getAudioContext();
+        const source = context.createBufferSource();
+        const gain = context.createGain();
+        const startTime = Math.max(0, Math.min(sample.startTime, cachedBuffer.duration));
+        const endTime = Math.max(startTime, Math.min(sample.endTime || cachedBuffer.duration, cachedBuffer.duration));
+        const duration = Math.max(0.001, endTime - startTime);
+
+        source.buffer = cachedBuffer;
+        source.playbackRate.value = Math.pow(2, pad.pitch / 12);
+        gain.gain.value = Math.max(0, Math.min(1, pad.volume * velocity));
+        source.connect(gain);
+        gain.connect(fxInputGain ?? context.destination);
+
+        activeSources.add(source);
+        const padSources = activeSourcesByPad.get(padId) ?? new Set<AudioBufferSourceNode>();
+        padSources.add(source);
+        activeSourcesByPad.set(padId, padSources);
+
+        source.onended = () => cleanupAudioSource(source, padId);
+        source.start(0, startTime, duration);
+      })
+      .catch((error: unknown) => console.error(error));
+    return;
   }
 
   const audio = new Audio(sample.url);
@@ -263,7 +320,7 @@ export function triggerPad(padId: PadId, velocity = 1): void {
 }
 
 export function stopAllSounds(): void {
-  for (const source of activeSources) {
+  for (const source of Array.from(activeSources)) {
     try {
       source.stop();
     } catch {
@@ -272,6 +329,7 @@ export function stopAllSounds(): void {
   }
 
   activeSources.clear();
+  activeSourcesByPad.clear();
 
   for (const audio of activeElements) {
     cleanupAudioElement(audio);
