@@ -89,7 +89,7 @@ export function GesturePanel() {
 
   return (
     <section className="rounded border border-line bg-panel p-4">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold uppercase text-neutral-200">Gesture FX</h2>
         <span className="rounded border border-line px-2 py-1 text-xs text-neutral-400">{status}</span>
       </div>
