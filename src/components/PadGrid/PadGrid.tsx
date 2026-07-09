@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { triggerPad } from '../../modules/audio/audioEngine';
+import { initAudioEngine, loadSampleBuffer, triggerPad } from '../../modules/audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 
 const padKeys = new Map([
@@ -26,6 +26,12 @@ export function PadGrid() {
   const samples = useProjectStore((state) => state.samples);
 
   useEffect(() => {
+    for (const sample of samples) {
+      void loadSampleBuffer(sample);
+    }
+  }, [samples]);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.repeat) {
         return;
@@ -34,6 +40,7 @@ export function PadGrid() {
       const padId = padKeys.get(event.key.toLowerCase());
 
       if (padId) {
+        event.preventDefault();
         triggerPad(padId);
       }
     }
@@ -56,6 +63,7 @@ export function PadGrid() {
             <button
               key={pad.id}
               type="button"
+              onPointerDown={() => void initAudioEngine()}
               onClick={() => triggerPad(pad.id)}
               className="aspect-square rounded-md border border-neutral-700 bg-neutral-800 p-3 text-left shadow-pad transition hover:border-signal hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-signal"
             >

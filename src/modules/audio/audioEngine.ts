@@ -95,9 +95,11 @@ export function triggerPad(padId: PadId, velocity = 1): void {
     return;
   }
 
+  const contextPromise = ensureAudioReady();
+
   ensureSampleBuffer(sample)
     .then(async () => {
-      const context = await ensureAudioReady();
+      const context = await contextPromise;
       const buffer = sampleBuffers.get(sample.id);
 
       if (!buffer) {

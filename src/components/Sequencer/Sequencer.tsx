@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   playSequencer,
   resetSequencer,
@@ -10,6 +11,21 @@ import { useProjectStore } from '../../store/useProjectStore';
 export function Sequencer() {
   const pads = useProjectStore((state) => state.pads);
   const pattern = useProjectStore((state) => state.pattern);
+  const [bpmInput, setBpmInput] = useState(String(pattern.bpm));
+
+  useEffect(() => {
+    setBpmInput(String(pattern.bpm));
+  }, [pattern.bpm]);
+
+  function commitBpmInput() {
+    const nextBpm = Number(bpmInput);
+
+    if (Number.isFinite(nextBpm)) {
+      setEngineBpm(nextBpm);
+    } else {
+      setBpmInput(String(pattern.bpm));
+    }
+  }
 
   return (
     <section className="rounded border border-line bg-panel p-4">
@@ -18,11 +34,17 @@ export function Sequencer() {
         <div className="flex items-center gap-2">
           <input
             className="w-20 rounded border border-line bg-neutral-950 px-2 py-1 text-sm"
-            max={220}
-            min={40}
-            onChange={(event) => setEngineBpm(Number(event.target.value))}
-            type="number"
-            value={pattern.bpm}
+            inputMode="numeric"
+            onBlur={commitBpmInput}
+            onChange={(event) => setBpmInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commitBpmInput();
+                event.currentTarget.blur();
+              }
+            }}
+            type="text"
+            value={bpmInput}
           />
           <button
             className="rounded bg-warning px-3 py-2 text-xs font-bold text-neutral-950"

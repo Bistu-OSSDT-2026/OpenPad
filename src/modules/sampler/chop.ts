@@ -2,6 +2,8 @@ import type { SampleAsset, SampleId } from '../../types/project';
 import { useProjectStore } from '../../store/useProjectStore';
 import { getWaveformPeaks } from './sampleManager';
 
+const MAX_CHOP_DURATION_SECONDS = 2;
+
 function getAudioContext(): AudioContext {
   const AudioContextCtor =
     window.AudioContext ||
@@ -41,13 +43,13 @@ export async function chopSample(sampleId: SampleId, parts: 4 | 8 | 16): Promise
   }
 
   const audioBuffer = await decodeSampleFromUrl(sample.url);
-  const sliceDuration = audioBuffer.duration / parts;
+  const sliceSpacing = audioBuffer.duration / parts;
   const baseName = sample.name.replace(/\.[^.]+$/, '');
   const choppedSamples: SampleAsset[] = [];
 
   for (let index = 0; index < parts; index += 1) {
-    const startTime = index * sliceDuration;
-    const endTime = Math.min(audioBuffer.duration, startTime + sliceDuration);
+    const startTime = Math.min(index * sliceSpacing, audioBuffer.duration);
+    const endTime = Math.min(audioBuffer.duration, startTime + MAX_CHOP_DURATION_SECONDS);
     const duration = Math.max(0.001, endTime - startTime);
 
     choppedSamples.push({

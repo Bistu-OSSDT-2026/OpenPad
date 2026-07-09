@@ -1,4 +1,4 @@
-import { triggerPad } from '../audio/audioEngine';
+import { stopAllSounds, triggerPad } from '../audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 import type { PadId, StepIndex } from '../../types/project';
 
@@ -18,6 +18,10 @@ function clearSequencerTimer(): void {
 function tick(): void {
   const state = useProjectStore.getState();
   const stepIndex = state.pattern.currentStep;
+
+  if (stepIndex === 0) {
+    stopAllSounds();
+  }
 
   for (const pad of state.pads) {
     const step = state.pattern.steps[pad.id]?.[stepIndex];
@@ -40,11 +44,13 @@ export function playSequencer(): void {
 
 export function stopSequencer(): void {
   clearSequencerTimer();
+  stopAllSounds();
   useProjectStore.getState().setSequencerPlaying(false);
 }
 
 export function resetSequencer(): void {
   clearSequencerTimer();
+  stopAllSounds();
   const store = useProjectStore.getState();
   store.setCurrentStep(0);
   store.setSequencerPlaying(false);
