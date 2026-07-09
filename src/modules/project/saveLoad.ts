@@ -1,9 +1,4 @@
-import {
-  PAD_KEY_LABELS,
-  STEP_COUNT,
-  type PatternId,
-  type ProjectState,
-} from '../../types/project';
+import { PAD_KEY_LABELS, STEP_COUNT, type ProjectState } from '../../types/project';
 
 export function createDefaultProject(): ProjectState {
   const pads = PAD_KEY_LABELS.map((name, index) => ({
@@ -21,8 +16,6 @@ export function createDefaultProject(): ProjectState {
     ]),
   );
 
-  const firstPatternId = 'pattern-1' as PatternId;
-
   return {
     pads,
     samples: [],
@@ -31,17 +24,7 @@ export function createDefaultProject(): ProjectState {
       isPlaying: false,
       currentStep: 0,
       steps,
-      swing: 0,
-      noteLength: 16,
     },
-    patterns: [
-      {
-        id: firstPatternId,
-        name: 'Pattern 1',
-        steps: structuredClone(steps),
-      },
-    ],
-    activePatternId: firstPatternId,
     fx: {
       filterCutoff: 8400,
       reverbAmount: 0.18,
@@ -55,11 +38,8 @@ export function validateProjectState(project: ProjectState): boolean {
   return (
     Array.isArray(project.pads) &&
     Array.isArray(project.samples) &&
-    Array.isArray(project.patterns) &&
     Boolean(project.pattern?.steps) &&
     typeof project.pattern?.bpm === 'number' &&
-    typeof project.pattern?.swing === 'number' &&
-    typeof project.activePatternId === 'string' &&
     typeof project.fx?.filterCutoff === 'number'
   );
 }

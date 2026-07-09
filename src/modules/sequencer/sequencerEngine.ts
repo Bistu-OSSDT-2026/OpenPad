@@ -1,102 +1,81 @@
-// src/modules/sequencer/sequencerEngine.ts
-import { audioEngine } from '../audio/audioEngine';
+import { stopAllSounds, triggerPad } from '../audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
+import type { PadId, StepIndex } from '../../types/project';
 
-export interface SequencerEngineContract {
-  playSequencer(): void;
-  stopSequencer(): void;
-  resetSequencer(): void;
-  setBpm(bpm: number): void;
-  toggleStep(padId: string, stepIndex: number): void;
-  setStepVelocity(padId: string, stepIndex: number, velocity: number): void;
-  getCurrentStep(): number;
+let timerId: number | undefined;
+
+function getStepIntervalMs(bpm: number): number {
+  return (60_000 / Math.max(40, Math.min(220, bpm))) / 4;
 }
 
-class SequencerEngineImpl implements SequencerEngineContract {
-  private timerId: number | null = null;
-
-  playSequencer(): void {
-    const { setSequencerPlaying } = useProjectStore.getState();
-    setSequencerPlaying(true);
-    this.runSequencerLoop();
-  }
-
-  stopSequencer(): void {
-    const { setSequencerPlaying } = useProjectStore.getState();
-    setSequencerPlaying(false);
-    if (this.timerId) {
-      clearTimeout(this.timerId);
-      this.timerId = null;
-    }
-  }
-
-  resetSequencer(): void {
-    const { setCurrentStep } = useProjectStore.getState();
-    setCurrentStep(0);
-    this.stopSequencer();
-  }
-
-  setBpm(bpm: number): void {
-    const { setBpm } = useProjectStore.getState();
-    setBpm(bpm);
-  }
-
-  setSwing(swing: number): void {
-    const { setSwing } = useProjectStore.getState();
-    setSwing(swing);
-  }
-
-  toggleStep(padId: string, stepIndex: number): void {
-    const { toggleStep } = useProjectStore.getState();
-    toggleStep(padId, stepIndex);
-  }
-
-  setStepVelocity(padId: string, stepIndex: number, velocity: number): void {
-    const { setStepVelocity } = useProjectStore.getState();
-    setStepVelocity(padId, stepIndex, velocity);
-  }
-
-  getCurrentStep(): number {
-    const state = useProjectStore.getState();
-    return state.pattern.currentStep;
-  }
-
-  private runSequencerLoop(): void {
-    const state = useProjectStore.getState();
-    const { pattern, pads } = state;
-
-    if (!pattern.isPlaying) {
-      return;
-    }
-
-    const currentStep = pattern.currentStep;
-    const bpm = pattern.bpm;
-    const stepDuration = 60000 / bpm / 4; // 16分音符的毫秒数
-
-    // 触发当前步进中所有激活的 Pad
-    for (const pad of pads) {
-      const steps = pattern.steps[pad.id];
-      if (steps && steps[currentStep] && steps[currentStep].active) {
-
-        audioEngine.triggerPad(pad.id, steps[currentStep].velocity || 0.8);
-      }
-    }
-
-    // 更新到下一步
-    const nextStep = (currentStep + 1) % 16;
-    const { setCurrentStep } = useProjectStore.getState();
-    setCurrentStep(nextStep);
-
-    // 调度下一次循环
-    this.timerId = setTimeout(() => {
-      this.runSequencerLoop();
-    }, stepDuration);
+function clearSequencerTimer(): void {
+  if (timerId !== undefined) {
+    window.clearInterval(timerId);
+    timerId = undefined;
   }
 }
 
-export const sequencerEngine = new SequencerEngineImpl();
-export const playSequencer = sequencerEngine.playSequencer.bind(sequencerEngine);
-export const stopSequencer = sequencerEngine.stopSequencer.bind(sequencerEngine);
-export const resetSequencer = sequencerEngine.resetSequencer.bind(sequencerEngine);
-export const setBpm = sequencerEngine.setBpm.bind(sequencerEngine);
-export const setSwing = sequencerEngine.setSwing.bind(sequencerEngine);
+function tick(): void {
+  const state = useProjectStore.getState();
+  const stepIndex = state.pattern.currentStep;
+
+  for (const pad of state.pads) {
+    const step = state.pattern.steps[pad.id]?.[stepIndex];
+
+    if (step?.active) {
+      triggerPad(pad.id, step.velocity);
+    }
+  }
+
+  useProjectStore.getState().setCurrentStep((stepIndex + 1) % 16);
+}
+
+export function playSequencer(): void {
+  clearSequencerTimer();
+  const { pattern, setSequencerPlaying } = useProjectStore.getState();
+
+  setSequencerPlaying(true);
+  tick();
+  timerId = window.setInterval(tick, getStepIntervalMs(pattern.bpm));
+}
+
+export function stopSequencer(): void {
+  clearSequencerTimer();
+  stopAllSounds();
+  useProjectStore.getState().setSequencerPlaying(false);
+}
+
+export function resetSequencer(): void {
+  clearSequencerTimer();
+  stopAllSounds();
+  const store = useProjectStore.getState();
+  store.setCurrentStep(0);
+  store.setSequencerPlaying(false);
+}
+
+export function setBpm(bpm: number): void {
+  const store = useProjectStore.getState();
+  const wasPlaying = store.pattern.isPlaying;
+
+  store.setBpm(bpm);
+
+  if (wasPlaying) {
+    playSequencer();
+  }
+}
+
+export function toggleStep(padId: PadId, stepIndex: StepIndex): void {
+  useProjectStore.getState().toggleStep(padId, stepIndex);
+}
+
+export function setStepVelocity(padId: PadId, stepIndex: StepIndex, velocity: number): void {
+  useProjectStore.getState().setStepVelocity(padId, stepIndex, velocity);
+}
+
+export function getSequencerBpm(): number {
+  return useProjectStore.getState().pattern.bpm;
+}
+
+export function getCurrentStep(): number {
+  return useProjectStore.getState().pattern.currentStep;
+}
