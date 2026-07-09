@@ -3,7 +3,7 @@ import { useProjectStore } from '../../store/useProjectStore';
 import type { FxState, GestureState } from '../../types/project';
 
 const FX_LIMITS: Record<keyof FxState, { min: number; max: number }> = {
-  filterCutoff: { min: 200, max: 12000 },
+  filterCutoff: { min: 0, max: 12000 },
   reverbAmount: { min: 0, max: 1 },
   delayFeedback: { min: 0, max: 0.95 },
   bitcrusherAmount: { min: 0, max: 1 },

@@ -4,7 +4,7 @@ import { applyFxState, setFxParam } from '../../modules/effects/fxEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 
 const controls: Array<{ key: keyof FxState; label: string; max: number; min: number; step: number }> = [
-  { key: 'filterCutoff', label: 'Filter', min: 200, max: 12000, step: 100 },
+  { key: 'filterCutoff', label: 'Filter', min: 0, max: 12000, step: 100 },
   { key: 'reverbAmount', label: 'Reverb', min: 0, max: 1, step: 0.01 },
   { key: 'delayFeedback', label: 'Delay', min: 0, max: 0.95, step: 0.01 },
   { key: 'bitcrusherAmount', label: 'Crush', min: 0, max: 1, step: 0.01 },

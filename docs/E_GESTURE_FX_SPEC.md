@@ -157,7 +157,7 @@ MVP 推荐映射如下：
 
 ### 8.2 数值范围
 
-- `filterCutoff`: UI 层保存为 `200 ~ 12000`
+- `filterCutoff`: UI 层保存为 `0 ~ 12000`，其中 `0` 表示滤波关闭 / 默认中性状态
 - `reverbAmount`: `0 ~ 1`
 - `delayFeedback`: `0 ~ 0.95`
 - `bitcrusherAmount`: 第一阶段保留 slider，不由手势控制
@@ -173,6 +173,7 @@ delayFeedback = min(0.95, handX)
 说明：
 
 - `handY` 建议反向映射，让“手抬高 = 滤波更开”更直观。
+- 手势控制开始前，默认 `filterCutoff = 0`；手势控制生效后，按上方公式输出约 `200 ~ 12000 Hz`。
 - `bitcrusherAmount` 不纳入第一阶段手势映射，避免音色过于极端影响演示稳定性。
 
 ## 9. 平滑与稳定性

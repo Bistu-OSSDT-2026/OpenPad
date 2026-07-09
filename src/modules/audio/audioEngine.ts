@@ -20,9 +20,9 @@ let delayFeedbackGain: GainNode | null = null;
 let delayDryGain: GainNode | null = null;
 let bitcrusherNode: WaveShaperNode | null = null;
 let currentFx: FxState = {
-  filterCutoff: 8400,
-  reverbAmount: 0.18,
-  delayFeedback: 0.22,
+  filterCutoff: 0,
+  reverbAmount: 0,
+  delayFeedback: 0,
   bitcrusherAmount: 0,
 };
 
@@ -80,6 +80,10 @@ function createBitcrusherCurve(amount: number): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+function getFilterFrequency(filterCutoff: number): number {
+  return filterCutoff <= 0 ? 20_000 : Math.min(12_000, Math.max(200, filterCutoff));
+}
+
 function ensureFxGraph(context: AudioContext): void {
   if (fxInputGain && masterGain && filterNode && bitcrusherNode) {
     return;
@@ -96,7 +100,7 @@ function ensureFxGraph(context: AudioContext): void {
 
   filterNode = context.createBiquadFilter();
   filterNode.type = 'lowpass';
-  filterNode.frequency.value = currentFx.filterCutoff;
+  filterNode.frequency.value = getFilterFrequency(currentFx.filterCutoff);
   filterNode.Q.value = 1;
 
   reverbNode = context.createConvolver();
@@ -293,7 +297,7 @@ export function applyFxState(fx: Partial<FxState>): void {
 
   if (fx.filterCutoff !== undefined && filterNode) {
     filterNode.frequency.setValueAtTime(
-      Math.min(12000, Math.max(200, fx.filterCutoff)),
+      getFilterFrequency(fx.filterCutoff),
       audioContext.currentTime,
     );
   }
