@@ -1,14 +1,17 @@
-import { stopAllSounds, triggerPad } from '../audio/audioEngine';
+import { preloadAssignedPadBuffers, stopAllSounds, triggerPad } from '../audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 import type { PadId, StepIndex } from '../../types/project';
 
 let timerId: number | undefined;
+let playRequestId = 0;
 
 function getStepIntervalMs(bpm: number): number {
   return (60_000 / Math.max(40, Math.min(220, bpm))) / 4;
 }
 
 function clearSequencerTimer(): void {
+  playRequestId += 1;
+
   if (timerId !== undefined) {
     window.clearInterval(timerId);
     timerId = undefined;
@@ -37,9 +40,17 @@ function tick(): void {
 export function playSequencer(): void {
   clearSequencerTimer();
   const { pattern, setSequencerPlaying } = useProjectStore.getState();
+  const requestId = playRequestId;
 
   setSequencerPlaying(true);
-  timerId = window.setInterval(tick, getStepIntervalMs(pattern.bpm));
+  void preloadAssignedPadBuffers().finally(() => {
+    if (requestId !== playRequestId || !useProjectStore.getState().pattern.isPlaying) {
+      return;
+    }
+
+    tick();
+    timerId = window.setInterval(tick, getStepIntervalMs(pattern.bpm));
+  });
 }
 
 export function stopSequencer(): void {
