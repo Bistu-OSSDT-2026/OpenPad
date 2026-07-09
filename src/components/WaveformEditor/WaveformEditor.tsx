@@ -10,6 +10,7 @@ export function WaveformEditor() {
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sliceLength, setSliceLength] = useState(1);
 
   const selectedSample = useMemo(
     () => samples.find((sample) => sample.id === selectedSampleId) ?? samples[0] ?? null,
@@ -50,7 +51,7 @@ export function WaveformEditor() {
     setError(null);
 
     try {
-      const choppedSamples = await chopSample(selectedSample.id, parts);
+      const choppedSamples = await chopSample(selectedSample.id, parts, sliceLength);
       if (choppedSamples.length > 0) {
         choppedSamples.forEach((sample) => addSample(sample));
         assignChopsToPads(choppedSamples, 0);
@@ -88,6 +89,18 @@ export function WaveformEditor() {
         <span>{selectedSample ? `Selected: ${selectedSample.name}` : 'No sample selected'}</span>
         {selectedSample?.duration ? <span>• {selectedSample.duration.toFixed(2)}s</span> : null}
       </div>
+      <label className="mt-4 grid gap-2 text-xs text-neutral-400">
+        <span>Slice length: {sliceLength.toFixed(2)}s</span>
+        <input
+          className="w-full"
+          max={8}
+          min={0.1}
+          onChange={(event) => setSliceLength(Number(event.target.value))}
+          step={0.05}
+          type="range"
+          value={sliceLength}
+        />
+      </label>
       <div className="mt-4 grid grid-cols-3 gap-2">
         {[4, 8, 16].map((parts) => (
           <button
