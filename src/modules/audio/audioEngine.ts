@@ -29,9 +29,9 @@ class AudioEngineState {
   bitcrusherNode: WaveShaperNode | null = null;
 
   currentFx: FxState = {
-    filterCutoff: 1.0,
-    reverbAmount: 0.0,
-    delayFeedback: 0.0,
+    filterCutoff: 8400,
+    reverbAmount: 0.18,
+    delayFeedback: 0.22,
     bitcrusherAmount: 0.0,
   };
 }
@@ -58,6 +58,44 @@ function createReverbImpulse(ctx: AudioContext, duration: number, decay: number)
   return buffer;
 }
 
+function createBitcrusherCurve(amount: number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(new ArrayBuffer(256 * Float32Array.BYTES_PER_ELEMENT));
+  const clamped = Math.min(1, Math.max(0, amount));
+
+  if (clamped <= 0) {
+    for (let i = 0; i < 256; i++) {
+      curve[i] = (i - 128) / 128;
+    }
+
+    return curve;
+  }
+
+  const steps = Math.max(2, Math.round(32 - 30 * clamped));
+
+  for (let i = 0; i < 256; i++) {
+    const x = (i - 128) / 128;
+    curve[i] = Math.min(1, Math.max(-1, Math.round(x * steps) / steps));
+  }
+
+  return curve;
+}
+
+function connectPadGain(gain: GainNode): void {
+  if (state.bitcrusherNode) {
+    gain.connect(state.bitcrusherNode);
+    return;
+  }
+
+  if (state.filterNode) {
+    gain.connect(state.filterNode);
+    return;
+  }
+
+  if (state.masterGain) {
+    gain.connect(state.masterGain);
+  }
+}
+
 // ============================================================
 // 3. 核心 AudioEngine
 // ============================================================
@@ -77,13 +115,17 @@ export const audioEngine: AudioEngineContract = {
     state.masterGain = masterGain;
     masterGain.connect(ctx.destination);
 
+    // Bitcrusher 放在最前面，amount=0 时为近似直通
+    const bitcrusher = ctx.createWaveShaper();
+    bitcrusher.curve = createBitcrusherCurve(0);
+    state.bitcrusherNode = bitcrusher;
+
     // 滤波器
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 20000;
+    filter.frequency.value = state.currentFx.filterCutoff;
     filter.Q.value = 1.0;
     state.filterNode = filter;
-    filter.connect(masterGain);
 
     // 混响
     const reverb = ctx.createConvolver();
@@ -92,7 +134,7 @@ export const audioEngine: AudioEngineContract = {
     state.reverbNode = reverb;
 
     const reverbGain = ctx.createGain();
-    reverbGain.gain.value = 0.0;
+    reverbGain.gain.value = state.currentFx.reverbAmount;
     state.reverbGain = reverbGain;
 
     const dryGain = ctx.createGain();
@@ -101,28 +143,27 @@ export const audioEngine: AudioEngineContract = {
 
     // 延迟
     const delay = ctx.createDelay(2.0);
-    delay.delayTime.value = 0.0;
+    delay.delayTime.value = 0.3;
     state.delayNode = delay;
 
     const delayFeedback = ctx.createGain();
-    delayFeedback.gain.value = 0.0;
+    delayFeedback.gain.value = state.currentFx.delayFeedback;
     state.delayFeedbackGain = delayFeedback;
 
     const delayDry = ctx.createGain();
-    delayDry.gain.value = 1.0;
+    delayDry.gain.value = 0.35;
     state.delayDryGain = delayDry;
 
-    // Bitcrusher
-    const bitcrusher = ctx.createWaveShaper();
-    const curve = new Float32Array(256);
-    for (let i = 0; i < 256; i++) {
-      const x = (i - 128) / 128;
-      const steps = 16;
-      const quantized = Math.round(x * steps) / steps;
-      curve[i] = Math.min(1, Math.max(-1, quantized));
-    }
-    bitcrusher.curve = curve;
-    state.bitcrusherNode = bitcrusher;
+    bitcrusher.connect(filter);
+    filter.connect(masterGain);
+    filter.connect(reverb);
+    reverb.connect(reverbGain);
+    reverbGain.connect(masterGain);
+    filter.connect(delay);
+    delay.connect(delayDry);
+    delayDry.connect(masterGain);
+    delay.connect(delayFeedback);
+    delayFeedback.connect(delay);
 
     console.log('[AudioEngine] 初始化完成');
   },
@@ -157,6 +198,7 @@ export const audioEngine: AudioEngineContract = {
     if (!state.padGains.has(padId) && state.ctx) {
       const gain = state.ctx.createGain();
       gain.gain.value = 0.8;
+      connectPadGain(gain);
       state.padGains.set(padId, gain);
     }
     console.log(`[AudioEngine] Pad ${padId} 已绑定 Sample ${sampleId}`);
@@ -190,21 +232,15 @@ export const audioEngine: AudioEngineContract = {
     let gainNode = state.padGains.get(padId);
     if (!gainNode) {
       gainNode = ctx.createGain();
-      gainNode.gain.value = 0.8;
+      connectPadGain(gainNode);
       state.padGains.set(padId, gainNode);
     }
+    gainNode.gain.value = Math.min(1.2, Math.max(0, 0.8 * velocity));
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
-    // 简化链路
     source.connect(gainNode);
-    if (state.filterNode) {
-      gainNode.connect(state.filterNode);
-      state.filterNode.connect(state.masterGain!);
-    } else {
-      gainNode.connect(state.masterGain!);
-    }
 
     if (!state.activeSources.has(padId)) {
       state.activeSources.set(padId, []);
@@ -227,7 +263,7 @@ export const audioEngine: AudioEngineContract = {
   },
 
   stopAllSounds(): void {
-    for (const [padId, sources] of state.activeSources) {
+    for (const sources of state.activeSources.values()) {
       for (const source of sources) {
         try {
           source.stop();
@@ -261,18 +297,18 @@ export const audioEngine: AudioEngineContract = {
 
     // 滤波器
     if (fx.filterCutoff !== undefined && state.filterNode) {
-      const minFreq = 20;
-      const maxFreq = 20000;
-      const freq = minFreq * Math.pow(maxFreq / minFreq, Math.min(1, Math.max(0, fx.filterCutoff)));
+      const minFreq = 200;
+      const maxFreq = 12000;
+      const freq = Math.min(maxFreq, Math.max(minFreq, fx.filterCutoff));
       state.filterNode.frequency.setValueAtTime(
-        Math.min(maxFreq, Math.max(minFreq, freq)),
+        freq,
         ctx.currentTime
       );
     }
 
     // 混响
     if (fx.reverbAmount !== undefined && state.reverbGain) {
-      const value = Math.min(0.8, Math.max(0, fx.reverbAmount));
+      const value = Math.min(1, Math.max(0, fx.reverbAmount));
       state.reverbGain.gain.setValueAtTime(value, ctx.currentTime);
       if (state.reverbDryGain) {
         state.reverbDryGain.gain.setValueAtTime(1 - value, ctx.currentTime);
@@ -281,21 +317,14 @@ export const audioEngine: AudioEngineContract = {
 
     // 延迟
     if (fx.delayFeedback !== undefined && state.delayFeedbackGain && state.delayNode) {
-      const value = Math.min(0.8, Math.max(0, fx.delayFeedback));
+      const value = Math.min(0.95, Math.max(0, fx.delayFeedback));
       state.delayFeedbackGain.gain.setValueAtTime(value, ctx.currentTime);
       state.delayNode.delayTime.setValueAtTime(0.3, ctx.currentTime);
     }
 
     // Bitcrusher
     if (fx.bitcrusherAmount !== undefined && state.bitcrusherNode) {
-      const steps = Math.max(2, Math.round(32 - 30 * Math.min(1, Math.max(0, fx.bitcrusherAmount))));
-      const curve = new Float32Array(256);
-      for (let i = 0; i < 256; i++) {
-        const x = (i - 128) / 128;
-        const quantized = Math.round(x * steps) / steps;
-        curve[i] = Math.min(1, Math.max(-1, quantized));
-      }
-      state.bitcrusherNode.curve = curve;
+      state.bitcrusherNode.curve = createBitcrusherCurve(fx.bitcrusherAmount);
     }
 
     console.log('[AudioEngine] FX 已应用:', fx);

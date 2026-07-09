@@ -41,6 +41,11 @@ class SequencerEngineImpl implements SequencerEngineContract {
     setBpm(bpm);
   }
 
+  setSwing(swing: number): void {
+    const { setSwing } = useProjectStore.getState();
+    setSwing(swing);
+  }
+
   toggleStep(padId: string, stepIndex: number): void {
     const { toggleStep } = useProjectStore.getState();
     toggleStep(padId, stepIndex);
@@ -90,3 +95,8 @@ class SequencerEngineImpl implements SequencerEngineContract {
 }
 
 export const sequencerEngine = new SequencerEngineImpl();
+export const playSequencer = sequencerEngine.playSequencer.bind(sequencerEngine);
+export const stopSequencer = sequencerEngine.stopSequencer.bind(sequencerEngine);
+export const resetSequencer = sequencerEngine.resetSequencer.bind(sequencerEngine);
+export const setBpm = sequencerEngine.setBpm.bind(sequencerEngine);
+export const setSwing = sequencerEngine.setSwing.bind(sequencerEngine);

@@ -28,7 +28,6 @@ const KEY_LABELS = ['Q', 'W', 'E', 'R', 'A', 'S', 'D', 'F', 'Z', 'X', 'C', 'V', 
 
 export function PadGrid() {
   const pads = useProjectStore((state) => state.pads);
-  const samples = useProjectStore((state) => state.samples);
 
   // 处理 Pad 点击
   const handlePadTrigger = (padId: PadId, velocity: number = 1) => {
@@ -65,7 +64,6 @@ export function PadGrid() {
       <h2 className="mb-3 text-sm font-bold uppercase text-neutral-200">Pad Grid</h2>
       <div className="grid grid-cols-4 gap-3">
         {pads.map((pad, index) => {
-          const sample = samples.find((s) => s.id === pad.sampleId);
           const hasSample = !!pad.sampleId;
           const isMuted = pad.muted;
 
