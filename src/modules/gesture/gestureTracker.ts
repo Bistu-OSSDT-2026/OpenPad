@@ -64,8 +64,7 @@ function toGestureState(result: HandLandmarkerResult): GestureState {
       distance(landmarks[12], palmCenter) +
       distance(landmarks[16], palmCenter) +
       distance(landmarks[20], palmCenter)
-    ) /
-    4;
+    ) / 4;
   const confidence = result.handednesses[0]?.[0]?.score ?? 0;
 
   return {

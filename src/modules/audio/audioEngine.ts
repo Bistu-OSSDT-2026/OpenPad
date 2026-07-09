@@ -1,32 +1,31 @@
 import { useProjectStore } from '../../store/useProjectStore';
-import type { AudioEngineContract } from '../../types/contracts';
 import type { FxState, PadId, SampleAsset, SampleId } from '../../types/project';
 
-class AudioEngineState {
-  ctx: AudioContext | null = null;
-  sampleBuffers = new Map<SampleId, AudioBuffer>();
-  loadingBuffers = new Map<SampleId, Promise<AudioBuffer>>();
-  padSampleMap = new Map<PadId, SampleId>();
-  activeSources = new Map<PadId, AudioBufferSourceNode[]>();
-  padGains = new Map<PadId, GainNode>();
-  masterGain: GainNode | null = null;
-  filterNode: BiquadFilterNode | null = null;
-  reverbNode: ConvolverNode | null = null;
-  reverbGain: GainNode | null = null;
-  reverbDryGain: GainNode | null = null;
-  delayNode: DelayNode | null = null;
-  delayFeedbackGain: GainNode | null = null;
-  delayDryGain: GainNode | null = null;
-  bitcrusherNode: WaveShaperNode | null = null;
-  currentFx: FxState = {
-    filterCutoff: 8400,
-    reverbAmount: 0.18,
-    delayFeedback: 0.22,
-    bitcrusherAmount: 0,
-  };
-}
-
-const state = new AudioEngineState();
+let audioContext: AudioContext | null = null;
+const sampleBuffers = new Map<SampleId, AudioBuffer>();
+const loadingBuffers = new Map<SampleId, Promise<void>>();
+const padAssignments = new Map<PadId, SampleId>();
+const activeSources = new Set<AudioBufferSourceNode>();
+const activeSourcesByPad = new Map<PadId, Set<AudioBufferSourceNode>>();
+const activeElements = new Set<HTMLAudioElement>();
+const activeElementsByPad = new Map<PadId, HTMLAudioElement>();
+const activeElementNodes = new Map<HTMLAudioElement, { gain: GainNode; source: MediaElementAudioSourceNode }>();
+let fxInputGain: GainNode | null = null;
+let masterGain: GainNode | null = null;
+let filterNode: BiquadFilterNode | null = null;
+let reverbNode: ConvolverNode | null = null;
+let reverbGain: GainNode | null = null;
+let reverbDryGain: GainNode | null = null;
+let delayNode: DelayNode | null = null;
+let delayFeedbackGain: GainNode | null = null;
+let delayDryGain: GainNode | null = null;
+let bitcrusherNode: WaveShaperNode | null = null;
+let currentFx: FxState = {
+  filterCutoff: 0,
+  reverbAmount: 0,
+  delayFeedback: 0,
+  bitcrusherAmount: 0,
+};
 
 function getAudioContext(): AudioContext {
   const AudioContextCtor =
@@ -37,26 +36,26 @@ function getAudioContext(): AudioContext {
     throw new Error('Web Audio is not available in this browser.');
   }
 
-  if (!state.ctx || state.ctx.state === 'closed') {
-    state.ctx = new AudioContextCtor();
+  if (!audioContext || audioContext.state === 'closed') {
+    audioContext = new AudioContextCtor();
   }
 
-  return state.ctx;
+  return audioContext;
 }
 
 async function ensureAudioReady(): Promise<AudioContext> {
-  const ctx = getAudioContext();
+  const context = getAudioContext();
 
-  if (ctx.state === 'suspended') {
-    await ctx.resume();
+  if (context.state === 'suspended') {
+    await context.resume();
   }
 
-  return ctx;
+  return context;
 }
 
-function createReverbImpulse(ctx: AudioContext, duration: number, decay: number): AudioBuffer {
-  const length = Math.floor(ctx.sampleRate * duration);
-  const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
+function createReverbImpulse(context: AudioContext, duration: number, decay: number): AudioBuffer {
+  const length = Math.floor(context.sampleRate * duration);
+  const buffer = context.createBuffer(2, length, context.sampleRate);
   const left = buffer.getChannelData(0);
   const right = buffer.getChannelData(1);
 
@@ -74,7 +73,7 @@ function createBitcrusherCurve(amount: number): Float32Array<ArrayBuffer> {
   const clamped = Math.min(1, Math.max(0, amount));
   const steps = clamped <= 0 ? 128 : Math.max(2, Math.round(32 - 30 * clamped));
 
-  for (let index = 0; index < 256; index += 1) {
+  for (let index = 0; index < curve.length; index += 1) {
     const value = (index - 128) / 128;
     curve[index] = clamped <= 0 ? value : Math.min(1, Math.max(-1, Math.round(value * steps) / steps));
   }
@@ -82,253 +81,303 @@ function createBitcrusherCurve(amount: number): Float32Array<ArrayBuffer> {
   return curve;
 }
 
-function connectPadGain(gain: GainNode): void {
-  if (state.bitcrusherNode) {
-    gain.connect(state.bitcrusherNode);
-  } else if (state.filterNode) {
-    gain.connect(state.filterNode);
-  } else if (state.masterGain) {
-    gain.connect(state.masterGain);
+function getFilterFrequency(filterCutoff: number): number {
+  return filterCutoff <= 0 ? 20_000 : Math.min(12_000, Math.max(200, filterCutoff));
+}
+
+function getDelayWetLevel(delayFeedback: number): number {
+  return delayFeedback <= 0 ? 0 : Math.min(0.45, Math.max(0, delayFeedback * 0.5));
+}
+
+function ensureFxGraph(context: AudioContext): void {
+  if (fxInputGain && masterGain && filterNode && bitcrusherNode) {
+    return;
+  }
+
+  fxInputGain = context.createGain();
+
+  masterGain = context.createGain();
+  masterGain.gain.value = 0.9;
+  masterGain.connect(context.destination);
+
+  bitcrusherNode = context.createWaveShaper();
+  bitcrusherNode.curve = createBitcrusherCurve(currentFx.bitcrusherAmount);
+
+  filterNode = context.createBiquadFilter();
+  filterNode.type = 'lowpass';
+  filterNode.frequency.value = getFilterFrequency(currentFx.filterCutoff);
+  filterNode.Q.value = 1;
+
+  reverbNode = context.createConvolver();
+  reverbNode.buffer = createReverbImpulse(context, 1.2, 4);
+
+  reverbGain = context.createGain();
+  reverbGain.gain.value = currentFx.reverbAmount;
+
+  reverbDryGain = context.createGain();
+  reverbDryGain.gain.value = 1 - currentFx.reverbAmount;
+
+  delayNode = context.createDelay(2);
+  delayNode.delayTime.value = 0.3;
+
+  delayFeedbackGain = context.createGain();
+  delayFeedbackGain.gain.value = currentFx.delayFeedback;
+
+  delayDryGain = context.createGain();
+  delayDryGain.gain.value = getDelayWetLevel(currentFx.delayFeedback);
+
+  fxInputGain.connect(bitcrusherNode);
+  bitcrusherNode.connect(filterNode);
+  filterNode.connect(reverbDryGain);
+  reverbDryGain.connect(masterGain);
+  filterNode.connect(reverbNode);
+  reverbNode.connect(reverbGain);
+  reverbGain.connect(masterGain);
+  filterNode.connect(delayNode);
+  delayNode.connect(delayDryGain);
+  delayDryGain.connect(masterGain);
+  delayNode.connect(delayFeedbackGain);
+  delayFeedbackGain.connect(delayNode);
+}
+
+function cleanupAudioElement(audio: HTMLAudioElement, padId?: PadId): void {
+  audio.pause();
+  activeElements.delete(audio);
+
+  if (padId && activeElementsByPad.get(padId) === audio) {
+    activeElementsByPad.delete(padId);
+  }
+
+  const nodes = activeElementNodes.get(audio);
+  if (nodes) {
+    nodes.source.disconnect();
+    nodes.gain.disconnect();
+    activeElementNodes.delete(audio);
   }
 }
 
-function getSampleForPad(padId: PadId): SampleAsset | undefined {
-  const project = useProjectStore.getState();
-  const pad = project.pads.find((item) => item.id === padId);
-  const sampleId = pad?.sampleId ?? state.padSampleMap.get(padId);
+function cleanupAudioSource(source: AudioBufferSourceNode, padId: PadId): void {
+  activeSources.delete(source);
 
-  return sampleId ? project.samples.find((sample) => sample.id === sampleId) : undefined;
-}
-
-async function decodeSample(sample: SampleAsset): Promise<AudioBuffer> {
-  if (state.sampleBuffers.has(sample.id)) {
-    return state.sampleBuffers.get(sample.id)!;
+  const padSources = activeSourcesByPad.get(padId);
+  if (padSources) {
+    padSources.delete(source);
+    if (padSources.size === 0) {
+      activeSourcesByPad.delete(padId);
+    }
   }
 
-  const pending = state.loadingBuffers.get(sample.id);
-
-  if (pending) {
-    return pending;
-  }
-
-  const loadPromise = ensureAudioReady()
-    .then(async (ctx) => {
-      const response = await fetch(sample.url);
-
-      if (!response.ok) {
-        throw new Error(`Unable to load sample ${sample.name}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-      state.sampleBuffers.set(sample.id, buffer);
-      return buffer;
-    })
-    .finally(() => {
-      state.loadingBuffers.delete(sample.id);
-    });
-
-  state.loadingBuffers.set(sample.id, loadPromise);
-  return loadPromise;
+  source.disconnect();
 }
 
-function stopPadSources(padId: PadId): void {
-  for (const source of state.activeSources.get(padId) ?? []) {
+function stopPadPlayback(padId: PadId): void {
+  const previousAudio = activeElementsByPad.get(padId);
+  if (previousAudio) {
+    cleanupAudioElement(previousAudio, padId);
+  }
+
+  for (const source of Array.from(activeSourcesByPad.get(padId) ?? [])) {
     try {
       source.stop();
     } catch {
       // Source may already have ended.
     }
-    source.disconnect();
+    cleanupAudioSource(source, padId);
   }
-
-  state.activeSources.delete(padId);
 }
 
-function ensurePadGain(padId: PadId, volume: number, velocity: number): GainNode {
-  const ctx = getAudioContext();
-  let gain = state.padGains.get(padId);
+async function decodeSample(sample: SampleAsset): Promise<AudioBuffer> {
+  const context = await ensureAudioReady();
+  const response = await fetch(sample.url);
 
-  if (!gain) {
-    gain = ctx.createGain();
-    connectPadGain(gain);
-    state.padGains.set(padId, gain);
+  if (!response.ok) {
+    throw new Error(`Unable to load sample: ${sample.name}`);
   }
 
-  gain.gain.value = Math.min(1.2, Math.max(0, volume * velocity));
-  return gain;
+  const arrayBuffer = await response.arrayBuffer();
+  return context.decodeAudioData(arrayBuffer.slice(0));
 }
 
-export const audioEngine: AudioEngineContract = {
-  async initAudioEngine(): Promise<void> {
-    const ctx = await ensureAudioReady();
+function getAssignedSample(padId: PadId): SampleAsset | undefined {
+  const state = useProjectStore.getState();
+  const pad = state.pads.find((item) => item.id === padId);
+  const sampleId = pad?.sampleId ?? padAssignments.get(padId);
 
-    if (state.masterGain && state.filterNode && state.bitcrusherNode) {
-      return;
-    }
+  return sampleId ? state.samples.find((sample) => sample.id === sampleId) : undefined;
+}
 
-    const masterGain = ctx.createGain();
-    masterGain.gain.value = 0.9;
-    state.masterGain = masterGain;
-    masterGain.connect(ctx.destination);
+async function ensureSampleBuffer(sample: SampleAsset): Promise<void> {
+  if (sampleBuffers.has(sample.id)) {
+    return;
+  }
 
-    const bitcrusher = ctx.createWaveShaper();
-    bitcrusher.curve = createBitcrusherCurve(state.currentFx.bitcrusherAmount);
-    state.bitcrusherNode = bitcrusher;
+  const pending = loadingBuffers.get(sample.id);
 
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = state.currentFx.filterCutoff;
-    filter.Q.value = 1;
-    state.filterNode = filter;
+  if (pending) {
+    await pending;
+    return;
+  }
 
-    const reverb = ctx.createConvolver();
-    reverb.buffer = createReverbImpulse(ctx, 1.2, 4);
-    state.reverbNode = reverb;
+  const loadPromise = decodeSample(sample)
+    .then((buffer) => {
+      sampleBuffers.set(sample.id, buffer);
+    })
+    .finally(() => {
+      loadingBuffers.delete(sample.id);
+    });
 
-    const reverbGain = ctx.createGain();
-    reverbGain.gain.value = state.currentFx.reverbAmount;
-    state.reverbGain = reverbGain;
+  loadingBuffers.set(sample.id, loadPromise);
+  await loadPromise;
+}
 
-    const reverbDryGain = ctx.createGain();
-    reverbDryGain.gain.value = 1 - state.currentFx.reverbAmount;
-    state.reverbDryGain = reverbDryGain;
+export async function initAudioEngine(): Promise<void> {
+  const context = await ensureAudioReady();
+  ensureFxGraph(context);
+}
 
-    const delay = ctx.createDelay(2);
-    delay.delayTime.value = 0.3;
-    state.delayNode = delay;
+export async function loadSampleBuffer(sample: SampleAsset): Promise<void> {
+  await ensureSampleBuffer(sample);
+}
 
-    const delayFeedback = ctx.createGain();
-    delayFeedback.gain.value = state.currentFx.delayFeedback;
-    state.delayFeedbackGain = delayFeedback;
+export function assignSampleToPad(padId: PadId, sampleId: SampleId): void {
+  padAssignments.set(padId, sampleId);
+}
 
-    const delayDryGain = ctx.createGain();
-    delayDryGain.gain.value = 0.35;
-    state.delayDryGain = delayDryGain;
+export function triggerPad(padId: PadId, velocity = 1): void {
+  const state = useProjectStore.getState();
+  const pad = state.pads.find((item) => item.id === padId);
+  const sample = getAssignedSample(padId);
 
-    bitcrusher.connect(filter);
-    filter.connect(masterGain);
-    filter.connect(reverb);
-    reverb.connect(reverbGain);
-    reverbGain.connect(masterGain);
-    filter.connect(delay);
-    delay.connect(delayDryGain);
-    delayDryGain.connect(masterGain);
-    delay.connect(delayFeedback);
-    delayFeedback.connect(delay);
-  },
+  if (!pad || pad.muted || !sample) {
+    return;
+  }
 
-  async loadSampleBuffer(sample: SampleAsset): Promise<void> {
-    await decodeSample(sample);
-  },
+  stopPadPlayback(padId);
 
-  assignSampleToPad(padId: PadId, sampleId: SampleId): void {
-    state.padSampleMap.set(padId, sampleId);
-  },
-
-  triggerPad(padId: PadId, velocity = 1): void {
-    const project = useProjectStore.getState();
-    const pad = project.pads.find((item) => item.id === padId);
-    const sample = getSampleForPad(padId);
-
-    if (!pad || pad.muted || !sample) {
-      return;
-    }
-
-    void audioEngine.initAudioEngine()
-      .then(() => decodeSample(sample))
-      .then((buffer) => {
-        stopPadSources(padId);
-        const ctx = getAudioContext();
-        const source = ctx.createBufferSource();
-        const gain = ensurePadGain(padId, pad.volume, velocity);
-        const startTime = Math.max(0, Math.min(sample.startTime, buffer.duration));
-        const endTime = Math.max(startTime, Math.min(sample.endTime || buffer.duration, buffer.duration));
+  const cachedBuffer = sampleBuffers.get(sample.id);
+  if (cachedBuffer) {
+    void initAudioEngine()
+      .then(() => {
+        const context = getAudioContext();
+        const source = context.createBufferSource();
+        const gain = context.createGain();
+        const startTime = Math.max(0, Math.min(sample.startTime, cachedBuffer.duration));
+        const endTime = Math.max(startTime, Math.min(sample.endTime || cachedBuffer.duration, cachedBuffer.duration));
         const duration = Math.max(0.001, endTime - startTime);
 
-        source.buffer = buffer;
+        source.buffer = cachedBuffer;
         source.playbackRate.value = Math.pow(2, pad.pitch / 12);
+        gain.gain.value = Math.max(0, Math.min(1, pad.volume * velocity));
         source.connect(gain);
+        gain.connect(fxInputGain ?? context.destination);
 
-        const sources = state.activeSources.get(padId) ?? [];
-        sources.push(source);
-        state.activeSources.set(padId, sources);
+        activeSources.add(source);
+        const padSources = activeSourcesByPad.get(padId) ?? new Set<AudioBufferSourceNode>();
+        padSources.add(source);
+        activeSourcesByPad.set(padId, padSources);
 
-        source.onended = () => {
-          const active = state.activeSources.get(padId) ?? [];
-          const remaining = active.filter((item) => item !== source);
-          if (remaining.length > 0) {
-            state.activeSources.set(padId, remaining);
-          } else {
-            state.activeSources.delete(padId);
-          }
-          source.disconnect();
-        };
-
+        source.onended = () => cleanupAudioSource(source, padId);
         source.start(0, startTime, duration);
       })
       .catch((error: unknown) => console.error(error));
-  },
+    return;
+  }
 
-  stopAllSounds(): void {
-    for (const padId of state.activeSources.keys()) {
-      stopPadSources(padId);
+  const audio = new Audio(sample.url);
+  const startTime = Math.max(0, sample.startTime);
+  const endTime = Math.max(startTime, sample.endTime || sample.duration || startTime + 2);
+  const durationMs = Math.max(50, (endTime - startTime) * 1000);
+
+  audio.volume = Math.max(0, Math.min(1, pad.volume * velocity));
+  audio.playbackRate = Math.pow(2, pad.pitch / 12);
+  audio.currentTime = startTime;
+  activeElements.add(audio);
+  activeElementsByPad.set(padId, audio);
+  audio.onended = () => {
+    cleanupAudioElement(audio, padId);
+  };
+
+  window.setTimeout(() => {
+    cleanupAudioElement(audio, padId);
+  }, durationMs);
+
+  void initAudioEngine()
+    .then(() => {
+      const context = getAudioContext();
+      const mediaSource = context.createMediaElementSource(audio);
+      const gain = context.createGain();
+      gain.gain.value = Math.max(0, Math.min(1, pad.volume * velocity));
+      mediaSource.connect(gain);
+      gain.connect(fxInputGain ?? context.destination);
+      activeElementNodes.set(audio, { gain, source: mediaSource });
+
+      return audio.play();
+    })
+    .catch((error: unknown) => {
+      cleanupAudioElement(audio, padId);
+      console.error(error);
+    });
+}
+
+export function stopAllSounds(): void {
+  for (const source of Array.from(activeSources)) {
+    try {
+      source.stop();
+    } catch {
+      // Source may already have ended.
     }
-  },
+  }
 
-  setPadVolume(padId: PadId, volume: number): void {
-    const gain = state.padGains.get(padId);
-    if (gain) {
-      gain.gain.value = Math.min(1.2, Math.max(0, volume));
-    }
-  },
+  activeSources.clear();
+  activeSourcesByPad.clear();
 
-  setPadPitch(padId: PadId, pitch: number): void {
-    void padId;
-    void pitch;
-  },
+  for (const audio of activeElements) {
+    cleanupAudioElement(audio);
+  }
 
-  applyFxState(fx: Partial<FxState>): void {
-    Object.assign(state.currentFx, fx);
+  activeElements.clear();
+  activeElementsByPad.clear();
+  activeElementNodes.clear();
+}
 
-    if (!state.ctx) {
-      return;
-    }
+export function setPadVolume(padId: PadId, volume: number): void {
+  useProjectStore.getState().updatePad(padId, { volume });
+}
 
-    const ctx = state.ctx;
+export function setPadPitch(padId: PadId, pitch: number): void {
+  useProjectStore.getState().updatePad(padId, { pitch });
+}
 
-    if (fx.filterCutoff !== undefined && state.filterNode) {
-      state.filterNode.frequency.setValueAtTime(
-        Math.min(12000, Math.max(200, fx.filterCutoff)),
-        ctx.currentTime,
-      );
-    }
+export function applyFxState(fx: Partial<FxState>): void {
+  currentFx = { ...currentFx, ...fx };
 
-    if (fx.reverbAmount !== undefined && state.reverbGain) {
-      const value = Math.min(1, Math.max(0, fx.reverbAmount));
-      state.reverbGain.gain.setValueAtTime(value, ctx.currentTime);
-      state.reverbDryGain?.gain.setValueAtTime(1 - value, ctx.currentTime);
-    }
+  if (!audioContext) {
+    return;
+  }
 
-    if (fx.delayFeedback !== undefined && state.delayFeedbackGain && state.delayNode) {
-      state.delayFeedbackGain.gain.setValueAtTime(
-        Math.min(0.95, Math.max(0, fx.delayFeedback)),
-        ctx.currentTime,
-      );
-      state.delayNode.delayTime.setValueAtTime(0.3, ctx.currentTime);
-    }
+  ensureFxGraph(audioContext);
 
-    if (fx.bitcrusherAmount !== undefined && state.bitcrusherNode) {
-      state.bitcrusherNode.curve = createBitcrusherCurve(fx.bitcrusherAmount);
-    }
-  },
-};
+  if (fx.filterCutoff !== undefined && filterNode) {
+    filterNode.frequency.setValueAtTime(
+      getFilterFrequency(fx.filterCutoff),
+      audioContext.currentTime,
+    );
+  }
 
-export const triggerPad = audioEngine.triggerPad.bind(audioEngine);
-export const stopAllSounds = audioEngine.stopAllSounds.bind(audioEngine);
-export const initAudioEngine = audioEngine.initAudioEngine.bind(audioEngine);
-export const loadSampleBuffer = audioEngine.loadSampleBuffer.bind(audioEngine);
-export const assignSampleToPad = audioEngine.assignSampleToPad.bind(audioEngine);
-export const setPadVolume = audioEngine.setPadVolume.bind(audioEngine);
-export const setPadPitch = audioEngine.setPadPitch.bind(audioEngine);
-export const applyFxState = audioEngine.applyFxState.bind(audioEngine);
+  if (fx.reverbAmount !== undefined && reverbGain) {
+    const value = Math.min(1, Math.max(0, fx.reverbAmount));
+    reverbGain.gain.setValueAtTime(value, audioContext.currentTime);
+    reverbDryGain?.gain.setValueAtTime(1 - value, audioContext.currentTime);
+  }
+
+  if (fx.delayFeedback !== undefined && delayFeedbackGain && delayNode) {
+    const value = Math.min(0.95, Math.max(0, fx.delayFeedback));
+    delayFeedbackGain.gain.setValueAtTime(value, audioContext.currentTime);
+    delayDryGain?.gain.setValueAtTime(getDelayWetLevel(value), audioContext.currentTime);
+    delayNode.delayTime.setValueAtTime(0.3, audioContext.currentTime);
+  }
+
+  if (fx.bitcrusherAmount !== undefined && bitcrusherNode) {
+    bitcrusherNode.curve = createBitcrusherCurve(fx.bitcrusherAmount);
+  }
+}

@@ -2,6 +2,11 @@ import type { SampleAsset, SampleId } from '../../types/project';
 import { useProjectStore } from '../../store/useProjectStore';
 import { getWaveformPeaks } from './sampleManager';
 
+const DEFAULT_CHOP_DURATION_SECONDS = 0.75;
+const MIN_CHOP_DURATION_SECONDS = 0.1;
+const MAX_CHOP_DURATION_SECONDS = 8;
+const DEFAULT_TRIM_WINDOW_SECONDS = 5;
+
 function getAudioContext(): AudioContext {
   const AudioContextCtor =
     window.AudioContext ||
@@ -33,7 +38,18 @@ async function decodeSampleFromUrl(url: string): Promise<AudioBuffer> {
   }
 }
 
-export async function chopSample(sampleId: SampleId, parts: 4 | 8 | 16): Promise<SampleAsset[]> {
+function normalizeChopDuration(durationSeconds = DEFAULT_CHOP_DURATION_SECONDS): number {
+  return Math.min(
+    MAX_CHOP_DURATION_SECONDS,
+    Math.max(MIN_CHOP_DURATION_SECONDS, durationSeconds),
+  );
+}
+
+export async function chopSample(
+  sampleId: SampleId,
+  parts: 4 | 8 | 16,
+  durationSeconds?: number,
+): Promise<SampleAsset[]> {
   const sample = useProjectStore.getState().samples.find((item) => item.id === sampleId);
 
   if (!sample) {
@@ -41,22 +57,28 @@ export async function chopSample(sampleId: SampleId, parts: 4 | 8 | 16): Promise
   }
 
   const audioBuffer = await decodeSampleFromUrl(sample.url);
-  const sliceDuration = audioBuffer.duration / parts;
+  const sliceSpacing = audioBuffer.duration / parts;
+  const sliceDuration = normalizeChopDuration(durationSeconds);
   const baseName = sample.name.replace(/\.[^.]+$/, '');
   const choppedSamples: SampleAsset[] = [];
 
   for (let index = 0; index < parts; index += 1) {
-    const startTime = index * sliceDuration;
-    const endTime = Math.min(audioBuffer.duration, startTime + sliceDuration);
-    const duration = Math.max(0.001, endTime - startTime);
-
+    const trimWindowStartTime = Math.min(index * sliceSpacing, audioBuffer.duration);
+    const trimWindowEndTime = Math.min(
+      audioBuffer.duration,
+      trimWindowStartTime + DEFAULT_TRIM_WINDOW_SECONDS,
+    );
+    const startTime = trimWindowStartTime;
+    const endTime = Math.min(trimWindowEndTime, startTime + sliceDuration);
     choppedSamples.push({
       id: crypto.randomUUID(),
       name: `${baseName} Slice ${index + 1}/${parts}`,
       url: sample.url,
-      duration,
+      duration: audioBuffer.duration,
       startTime,
       endTime,
+      trimWindowStartTime,
+      trimWindowEndTime,
       sourceFileName: sample.sourceFileName ?? sample.name,
       waveformPeaks: getWaveformPeaks(audioBuffer, 32),
     });

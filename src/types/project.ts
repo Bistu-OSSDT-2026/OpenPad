@@ -32,6 +32,8 @@ export interface SampleAsset {
   duration: number;
   startTime: number;
   endTime: number;
+  trimWindowStartTime?: number;
+  trimWindowEndTime?: number;
   sourceFileName?: string;
   waveformPeaks?: number[];
 }

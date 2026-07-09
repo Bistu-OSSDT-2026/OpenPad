@@ -26,9 +26,9 @@ export function createDefaultProject(): ProjectState {
       steps,
     },
     fx: {
-      filterCutoff: 8400,
-      reverbAmount: 0.18,
-      delayFeedback: 0.22,
+      filterCutoff: 0,
+      reverbAmount: 0,
+      delayFeedback: 0,
       bitcrusherAmount: 0,
     },
   };

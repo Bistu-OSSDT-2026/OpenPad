@@ -1,9 +1,9 @@
-import { audioEngine } from '../audio/audioEngine';
+import { applyFxState as applyAudioFxState } from '../audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 import type { FxState, GestureState } from '../../types/project';
 
 const FX_LIMITS: Record<keyof FxState, { min: number; max: number }> = {
-  filterCutoff: { min: 200, max: 12000 },
+  filterCutoff: { min: 0, max: 12000 },
   reverbAmount: { min: 0, max: 1 },
   delayFeedback: { min: 0, max: 0.95 },
   bitcrusherAmount: { min: 0, max: 1 },
@@ -19,11 +19,9 @@ function normalizeFxPatch(fx: Partial<FxState>): Partial<FxState> {
   for (const [name, value] of Object.entries(fx) as Array<[keyof FxState, number]>) {
     const limits = FX_LIMITS[name];
 
-    if (!Number.isFinite(value) || !limits) {
-      continue;
+    if (Number.isFinite(value) && limits) {
+      normalized[name] = clamp(value, limits.min, limits.max);
     }
-
-    normalized[name] = clamp(value, limits.min, limits.max);
   }
 
   return normalized;
@@ -41,7 +39,7 @@ export function applyFxState(fx: Partial<FxState>): void {
   }
 
   useProjectStore.getState().setFx(normalized);
-  audioEngine.applyFxState(normalized);
+  applyAudioFxState(normalized);
 }
 
 export function mapGestureToFx(gesture: GestureState): Partial<FxState> {
