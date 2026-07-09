@@ -64,13 +64,11 @@ export async function chopSample(
   for (let index = 0; index < parts; index += 1) {
     const startTime = Math.min(index * sliceSpacing, audioBuffer.duration);
     const endTime = Math.min(audioBuffer.duration, startTime + sliceDuration);
-    const duration = Math.max(0.001, endTime - startTime);
-
     choppedSamples.push({
       id: crypto.randomUUID(),
       name: `${baseName} Slice ${index + 1}/${parts}`,
       url: sample.url,
-      duration,
+      duration: audioBuffer.duration,
       startTime,
       endTime,
       sourceFileName: sample.sourceFileName ?? sample.name,

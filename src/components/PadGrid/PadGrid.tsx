@@ -59,12 +59,6 @@ export function PadGrid() {
         {pads.map((pad) => {
           const sample = samples.find((item) => item.id === pad.sampleId);
           const sampleLength = sample ? Math.max(0.1, sample.endTime - sample.startTime) : 0;
-          const maxLength = sample
-            ? Math.max(
-                0.1,
-                Math.min(MAX_PAD_SLICE_LENGTH_SECONDS, sample.duration - sample.startTime),
-              )
-            : MAX_PAD_SLICE_LENGTH_SECONDS;
 
           return (
             <div
@@ -89,7 +83,7 @@ export function PadGrid() {
                 <input
                   className="block h-1 w-full accent-signal"
                   disabled={!sample}
-                  max={maxLength}
+                  max={MAX_PAD_SLICE_LENGTH_SECONDS}
                   min={0.1}
                   onChange={(event) => {
                     if (!sample) {
@@ -97,15 +91,12 @@ export function PadGrid() {
                     }
 
                     updateSample(sample.id, {
-                      endTime: Math.min(
-                        sample.duration,
-                        sample.startTime + Number(event.target.value),
-                      ),
+                      endTime: sample.startTime + Number(event.target.value),
                     });
                   }}
                   step={0.05}
                   type="range"
-                  value={sample ? Math.min(sampleLength, maxLength) : 0.1}
+                  value={sample ? Math.min(sampleLength, MAX_PAD_SLICE_LENGTH_SECONDS) : 0.1}
                 />
               </label>
             </div>
