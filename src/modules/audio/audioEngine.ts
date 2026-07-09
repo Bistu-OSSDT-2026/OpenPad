@@ -7,6 +7,7 @@ const loadingBuffers = new Map<SampleId, Promise<void>>();
 const padAssignments = new Map<PadId, SampleId>();
 const activeSources = new Set<AudioBufferSourceNode>();
 const activeElements = new Set<HTMLAudioElement>();
+const activeElementsByPad = new Map<PadId, HTMLAudioElement>();
 
 function getAudioContext(): AudioContext {
   const AudioContextCtor =
@@ -99,6 +100,13 @@ export function triggerPad(padId: PadId, velocity = 1): void {
     return;
   }
 
+  const previousAudio = activeElementsByPad.get(padId);
+  if (previousAudio) {
+    previousAudio.pause();
+    activeElements.delete(previousAudio);
+    activeElementsByPad.delete(padId);
+  }
+
   const audio = new Audio(sample.url);
   const startTime = Math.max(0, sample.startTime);
   const endTime = Math.max(startTime, sample.endTime || sample.duration || startTime + 2);
@@ -108,15 +116,27 @@ export function triggerPad(padId: PadId, velocity = 1): void {
   audio.playbackRate = Math.pow(2, pad.pitch / 12);
   audio.currentTime = startTime;
   activeElements.add(audio);
-  audio.onended = () => activeElements.delete(audio);
+  activeElementsByPad.set(padId, audio);
+  audio.onended = () => {
+    activeElements.delete(audio);
+    if (activeElementsByPad.get(padId) === audio) {
+      activeElementsByPad.delete(padId);
+    }
+  };
 
   window.setTimeout(() => {
     audio.pause();
     activeElements.delete(audio);
+    if (activeElementsByPad.get(padId) === audio) {
+      activeElementsByPad.delete(padId);
+    }
   }, durationMs);
 
   void audio.play().catch((error: unknown) => {
     activeElements.delete(audio);
+    if (activeElementsByPad.get(padId) === audio) {
+      activeElementsByPad.delete(padId);
+    }
     console.error(error);
   });
 }
@@ -137,6 +157,7 @@ export function stopAllSounds(): void {
   }
 
   activeElements.clear();
+  activeElementsByPad.clear();
 }
 
 export function setPadVolume(padId: PadId, volume: number): void {
