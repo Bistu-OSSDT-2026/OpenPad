@@ -1,114 +1,117 @@
-import { triggerPad } from '../audio/audioEngine';
+import { initAudioEngine, loadSampleBuffer, stopAllSounds, triggerPad } from '../audio/audioEngine';
 import { useProjectStore } from '../../store/useProjectStore';
+import type { PadId, StepIndex } from '../../types/project';
 
-let timeoutId: ReturnType<typeof setTimeout> | null = null;
+let timerId: number | undefined;
+let playbackRequestId = 0;
 
 function getStepIntervalMs(bpm: number): number {
-  // 16th note interval: (60 / bpm) / 4 * 1000 = 15000 / bpm
-  return Math.max(25, 15000 / bpm);
+  return (60_000 / Math.max(40, Math.min(220, bpm))) / 4;
+}
+
+function clearSequencerTimer(): void {
+  if (timerId !== undefined) {
+    window.clearInterval(timerId);
+    timerId = undefined;
+  }
 }
 
 function tick(): void {
   const state = useProjectStore.getState();
+  const stepIndex = state.pattern.currentStep;
 
-  if (!state.pattern.isPlaying) return;
+  if (stepIndex === 0) {
+    stopAllSounds();
+  }
 
-  const { pattern, pads } = state;
-  const step = pattern.currentStep;
+  for (const pad of state.pads) {
+    const step = state.pattern.steps[pad.id]?.[stepIndex];
 
-  // Trigger every active, non-muted pad at the current step
-  for (const pad of pads) {
-    if (pad.muted) continue;
-
-    const stepState = pattern.steps[pad.id]?.[step];
-
-    if (stepState?.active && pad.sampleId) {
-      triggerPad(pad.id, stepState.velocity);
+    if (step?.active) {
+      triggerPad(pad.id, step.velocity);
     }
   }
 
-  // Advance to the next step
-  state.setCurrentStep((step + 1) % 16);
+  useProjectStore.getState().setCurrentStep((stepIndex + 1) % 16);
 }
 
-function scheduleNext(bpm: number, swing: number): void {
+async function prepareSequencerSamples(): Promise<void> {
   const state = useProjectStore.getState();
+  const sampleIds = new Set<string>();
 
-  if (!state.pattern.isPlaying) return;
+  for (const pad of state.pads) {
+    const hasActiveStep = state.pattern.steps[pad.id]?.some((step) => step.active);
 
-  const interval = getStepIntervalMs(bpm);
-  const nextStep = state.pattern.currentStep;
+    if (hasActiveStep && pad.sampleId) {
+      sampleIds.add(pad.sampleId);
+    }
+  }
 
-  // Apply swing delay on odd-numbered steps (the "off" 16th notes)
-  const swingOffset = nextStep % 2 === 1 ? swing * interval : 0;
-  const delay = Math.max(5, interval + swingOffset);
-
-  timeoutId = setTimeout(() => {
-    tick();
-    scheduleNext(bpm, swing);
-  }, delay);
+  await initAudioEngine();
+  await Promise.all(
+    state.samples
+      .filter((sample) => sampleIds.has(sample.id))
+      .map((sample) => loadSampleBuffer(sample)),
+  );
 }
 
 export function playSequencer(): void {
-  const state = useProjectStore.getState();
+  clearSequencerTimer();
+  const requestId = playbackRequestId + 1;
+  playbackRequestId = requestId;
 
-  if (state.pattern.isPlaying) return;
+  void prepareSequencerSamples()
+    .catch((error: unknown) => console.error(error))
+    .finally(() => {
+      if (requestId !== playbackRequestId) {
+        return;
+      }
 
-  state.setSequencerPlaying(true);
+      const { pattern, setSequencerPlaying } = useProjectStore.getState();
 
-  // Fire the first step immediately for responsive feel
-  tick();
-
-  // Schedule subsequent steps
-  scheduleNext(state.pattern.bpm, state.pattern.swing);
+      setSequencerPlaying(true);
+      tick();
+      timerId = window.setInterval(tick, getStepIntervalMs(pattern.bpm));
+    });
 }
 
 export function stopSequencer(): void {
-  if (timeoutId !== null) {
-    clearTimeout(timeoutId);
-    timeoutId = null;
-  }
-
+  playbackRequestId += 1;
+  clearSequencerTimer();
+  stopAllSounds();
   useProjectStore.getState().setSequencerPlaying(false);
 }
 
 export function resetSequencer(): void {
-  stopSequencer();
-  useProjectStore.getState().setCurrentStep(0);
+  playbackRequestId += 1;
+  clearSequencerTimer();
+  stopAllSounds();
+  const store = useProjectStore.getState();
+  store.setCurrentStep(0);
+  store.setSequencerPlaying(false);
 }
 
 export function setBpm(bpm: number): void {
-  const clamped = Math.min(220, Math.max(40, Math.round(bpm)));
-  const state = useProjectStore.getState();
+  const store = useProjectStore.getState();
+  const wasPlaying = store.pattern.isPlaying;
 
-  state.setBpm(clamped);
+  store.setBpm(bpm);
 
-  // Restart playback with new timing if currently active
-  if (state.pattern.isPlaying) {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-
-    scheduleNext(clamped, state.pattern.swing);
+  if (wasPlaying) {
+    playSequencer();
   }
 }
 
-export function setSwing(swing: number): void {
-  const clamped = Math.min(1, Math.max(0, swing));
-  const state = useProjectStore.getState();
+export function toggleStep(padId: PadId, stepIndex: StepIndex): void {
+  useProjectStore.getState().toggleStep(padId, stepIndex);
+}
 
-  state.setSwing(clamped);
+export function setStepVelocity(padId: PadId, stepIndex: StepIndex, velocity: number): void {
+  useProjectStore.getState().setStepVelocity(padId, stepIndex, velocity);
+}
 
-  // Restart timing so swing takes effect immediately
-  if (state.pattern.isPlaying) {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-
-    scheduleNext(state.pattern.bpm, clamped);
-  }
+export function getSequencerBpm(): number {
+  return useProjectStore.getState().pattern.bpm;
 }
 
 export function getCurrentStep(): number {

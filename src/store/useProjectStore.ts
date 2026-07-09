@@ -6,11 +6,8 @@ import {
 } from '../modules/project/saveLoad';
 import type {
   FxState,
-  NoteLength,
   PadId,
   PadState,
-  Pattern,
-  PatternId,
   ProjectState,
   SampleAsset,
   SampleId,
@@ -30,14 +27,6 @@ export interface ProjectActions {
   setBpm(bpm: number): void;
   setCurrentStep(stepIndex: number): void;
   setSequencerPlaying(isPlaying: boolean): void;
-  setSwing(swing: number): void;
-  setNoteLength(noteLength: NoteLength): void;
-  selectPattern(patternId: PatternId): void;
-  createPattern(name: string): void;
-  duplicatePattern(patternId: PatternId): void;
-  deletePattern(patternId: PatternId): void;
-  clearActivePatternSteps(): void;
-  randomizeActivePatternSteps(): void;
   setFx(patch: Partial<FxState>): void;
   resetFx(): void;
   resetProject(): void;
@@ -114,38 +103,32 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     })),
 
   toggleStep: (padId, stepIndex) =>
-    set((state) => {
-      const updatedSteps = {
-        ...state.pattern.steps,
-        [padId]: state.pattern.steps[padId].map((step, index) =>
-          index === stepIndex ? { ...step, active: !step.active } : step,
-        ),
-      };
-      return {
-        pattern: { ...state.pattern, steps: updatedSteps },
-        patterns: state.patterns.map((p) =>
-          p.id === state.activePatternId ? { ...p, steps: updatedSteps } : p,
-        ),
-      };
-    }),
+    set((state) => ({
+      pattern: {
+        ...state.pattern,
+        steps: {
+          ...state.pattern.steps,
+          [padId]: state.pattern.steps[padId].map((step, index) =>
+            index === stepIndex ? { ...step, active: !step.active } : step,
+          ),
+        },
+      },
+    })),
 
   setStepVelocity: (padId, stepIndex, velocity) =>
-    set((state) => {
-      const updatedSteps = {
-        ...state.pattern.steps,
-        [padId]: state.pattern.steps[padId].map((step, index) =>
-          index === stepIndex
-            ? { ...step, velocity: Math.min(1, Math.max(0, velocity)) }
-            : step,
-        ),
-      };
-      return {
-        pattern: { ...state.pattern, steps: updatedSteps },
-        patterns: state.patterns.map((p) =>
-          p.id === state.activePatternId ? { ...p, steps: updatedSteps } : p,
-        ),
-      };
-    }),
+    set((state) => ({
+      pattern: {
+        ...state.pattern,
+        steps: {
+          ...state.pattern.steps,
+          [padId]: state.pattern.steps[padId].map((step, index) =>
+            index === stepIndex
+              ? { ...step, velocity: Math.min(1, Math.max(0, velocity)) }
+              : step,
+          ),
+        },
+      },
+    })),
 
   setBpm: (bpm) =>
     set((state) => ({
@@ -161,111 +144,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set((state) => ({
       pattern: { ...state.pattern, isPlaying },
     })),
-
-  setSwing: (swing) =>
-    set((state) => ({
-      pattern: {
-        ...state.pattern,
-        swing: Math.min(1, Math.max(0, swing)),
-      },
-    })),
-
-  setNoteLength: (noteLength) =>
-    set((state) => ({
-      pattern: { ...state.pattern, noteLength },
-    })),
-
-  selectPattern: (patternId) =>
-    set((state) => {
-      const pattern = state.patterns.find((p) => p.id === patternId);
-      if (!pattern) return state;
-      return {
-        activePatternId: patternId,
-        pattern: {
-          ...state.pattern,
-          steps: structuredClone(pattern.steps),
-        },
-      };
-    }),
-
-  createPattern: (name) =>
-    set((state) => {
-      const id = `pattern-${Date.now()}` as PatternId;
-      const newPattern: Pattern = {
-        id,
-        name,
-        steps: structuredClone(state.pattern.steps),
-      };
-      return {
-        patterns: [...state.patterns, newPattern],
-        activePatternId: id,
-      };
-    }),
-
-  duplicatePattern: (patternId) =>
-    set((state) => {
-      const source = state.patterns.find((p) => p.id === patternId);
-      if (!source) return state;
-      const id = `pattern-${Date.now()}` as PatternId;
-      const dup: Pattern = {
-        id,
-        name: `${source.name} (copy)`,
-        steps: structuredClone(source.steps),
-      };
-      return {
-        patterns: [...state.patterns, dup],
-        activePatternId: id,
-        pattern: {
-          ...state.pattern,
-          steps: structuredClone(dup.steps),
-        },
-      };
-    }),
-
-  deletePattern: (patternId) =>
-    set((state) => {
-      if (state.patterns.length <= 1) return state;
-      const filtered = state.patterns.filter((p) => p.id !== patternId);
-      if (filtered.length === state.patterns.length) return state;
-      const nextActive = filtered[0];
-      return {
-        patterns: filtered,
-        activePatternId: nextActive.id,
-        pattern: {
-          ...state.pattern,
-          steps: structuredClone(nextActive.steps),
-        },
-      };
-    }),
-
-  clearActivePatternSteps: () =>
-    set((state) => {
-      const cleared = Object.fromEntries(
-        Object.entries(state.pattern.steps).map(([padId, steps]) => [
-          padId,
-          steps.map((s) => ({ ...s, active: false })),
-        ]),
-      );
-      return {
-        pattern: { ...state.pattern, steps: cleared },
-      };
-    }),
-
-  randomizeActivePatternSteps: () =>
-    set((state) => {
-      const randomized = Object.fromEntries(
-        Object.entries(state.pattern.steps).map(([padId, steps]) => [
-          padId,
-          steps.map(() => ({
-            active: Math.random() > 0.65,
-            velocity: 0.25 + Math.random() * 0.75,
-          })),
-        ]),
-      );
-      return {
-        pattern: { ...state.pattern, steps: randomized },
-      };
-    }),
 
   setFx: (patch) =>
     set((state) => ({
