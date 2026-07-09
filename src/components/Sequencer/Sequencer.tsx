@@ -63,8 +63,8 @@ export function Sequencer() {
         </div>
       </div>
       <div className="overflow-x-auto">
-        <div className="grid min-w-[760px] gap-2">
-          {pads.slice(0, 8).map((pad) => (
+        <div className="grid min-w-[760px] gap-1.5">
+          {pads.map((pad) => (
             <div className="grid grid-cols-[44px_repeat(16,minmax(28px,1fr))] gap-1" key={pad.id}>
               <div className="flex items-center text-xs font-bold text-neutral-400">{pad.name}</div>
               {pattern.steps[pad.id].map((step, index) => (
