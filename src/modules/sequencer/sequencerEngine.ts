@@ -1,7 +1,7 @@
 import type { PadId } from '../../types/project';
 
-let currentStep = 0;
 let bpm = 96;
+let currentStep = 0;
 
 export function playSequencer(): void {}
 
@@ -19,10 +19,10 @@ export function toggleStep(_padId: PadId, _stepIndex: number): void {}
 
 export function setStepVelocity(_padId: PadId, _stepIndex: number, _velocity: number): void {}
 
-export function getCurrentStep(): number {
-  return currentStep;
-}
-
 export function getSequencerBpm(): number {
   return bpm;
+}
+
+export function getCurrentStep(): number {
+  return currentStep;
 }
