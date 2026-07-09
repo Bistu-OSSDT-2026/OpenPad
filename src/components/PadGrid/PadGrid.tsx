@@ -96,48 +96,70 @@ export function PadGrid() {
                       : '--'}
                   </span>
                 </span>
-                <label>
-                  <span className="sr-only">Start</span>
-                  <input
-                    className="block h-1 w-full accent-signal"
-                    disabled={!sample}
-                    max={sample ? Math.max(0, endOffset - MIN_PAD_SLICE_LENGTH_SECONDS) : 0}
-                    min={0}
-                    onChange={(event) => {
-                      if (!sample) {
-                        return;
-                      }
+                <div className="relative h-5">
+                  <div className="absolute left-0 right-0 top-2 h-1 rounded bg-neutral-700" />
+                  {sample ? (
+                    <div
+                      className="absolute top-2 h-1 rounded bg-signal"
+                      style={{
+                        left: `${(startOffset / trimWindowLength) * 100}%`,
+                        width: `${((endOffset - startOffset) / trimWindowLength) * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  <label>
+                    <span className="sr-only">Start</span>
+                    <input
+                      className="trim-range trim-range-start"
+                      disabled={!sample}
+                      max={trimWindowLength}
+                      min={0}
+                      onChange={(event) => {
+                        if (!sample) {
+                          return;
+                        }
 
-                      updateSample(sample.id, {
-                        startTime: trimWindowStartTime + Number(event.target.value),
-                      });
-                    }}
-                    step={0.05}
-                    type="range"
-                    value={startOffset}
-                  />
-                </label>
-                <label>
-                  <span className="sr-only">End</span>
-                  <input
-                    className="block h-1 w-full accent-warning"
-                    disabled={!sample}
-                    max={trimWindowLength}
-                    min={sample ? startOffset + MIN_PAD_SLICE_LENGTH_SECONDS : MIN_PAD_SLICE_LENGTH_SECONDS}
-                    onChange={(event) => {
-                      if (!sample) {
-                        return;
-                      }
+                        const nextStart = Math.min(
+                          Number(event.target.value),
+                          endOffset - MIN_PAD_SLICE_LENGTH_SECONDS,
+                        );
 
-                      updateSample(sample.id, {
-                        endTime: trimWindowStartTime + Number(event.target.value),
-                      });
-                    }}
-                    step={0.05}
-                    type="range"
-                    value={endOffset}
-                  />
-                </label>
+                        updateSample(sample.id, {
+                          startTime: trimWindowStartTime + Math.max(0, nextStart),
+                        });
+                      }}
+                      step={0.05}
+                      type="range"
+                      value={startOffset}
+                    />
+                  </label>
+                  <label>
+                    <span className="sr-only">End</span>
+                    <input
+                      className="trim-range trim-range-end"
+                      disabled={!sample}
+                      max={trimWindowLength}
+                      min={0}
+                      onChange={(event) => {
+                        if (!sample) {
+                          return;
+                        }
+
+                        const nextEnd = Math.max(
+                          Number(event.target.value),
+                          startOffset + MIN_PAD_SLICE_LENGTH_SECONDS,
+                        );
+
+                        updateSample(sample.id, {
+                          endTime: trimWindowStartTime + Math.min(trimWindowLength, nextEnd),
+                        });
+                      }}
+                      step={0.05}
+                      type="range"
+                      value={endOffset}
+                    />
+                  </label>
+                </div>
               </div>
             </div>
           );
