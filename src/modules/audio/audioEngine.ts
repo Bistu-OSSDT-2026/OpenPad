@@ -6,6 +6,7 @@ const sampleBuffers = new Map<SampleId, AudioBuffer>();
 const loadingBuffers = new Map<SampleId, Promise<void>>();
 const padAssignments = new Map<PadId, SampleId>();
 const activeSources = new Set<AudioBufferSourceNode>();
+const activeElements = new Set<HTMLAudioElement>();
 
 function getAudioContext(): AudioContext {
   const AudioContextCtor =
@@ -98,36 +99,26 @@ export function triggerPad(padId: PadId, velocity = 1): void {
     return;
   }
 
-  const contextPromise = ensureAudioReady();
+  const audio = new Audio(sample.url);
+  const startTime = Math.max(0, sample.startTime);
+  const endTime = Math.max(startTime, sample.endTime || sample.duration || startTime + 2);
+  const durationMs = Math.max(50, (endTime - startTime) * 1000);
 
-  ensureSampleBuffer(sample)
-    .then(async () => {
-      const context = await contextPromise;
-      const buffer = sampleBuffers.get(sample.id);
+  audio.volume = Math.max(0, Math.min(1, pad.volume * velocity));
+  audio.playbackRate = Math.pow(2, pad.pitch / 12);
+  audio.currentTime = startTime;
+  activeElements.add(audio);
+  audio.onended = () => activeElements.delete(audio);
 
-      if (!buffer) {
-        return;
-      }
+  window.setTimeout(() => {
+    audio.pause();
+    activeElements.delete(audio);
+  }, durationMs);
 
-      const source = context.createBufferSource();
-      const gain = context.createGain();
-      const startTime = Math.max(0, Math.min(sample.startTime, buffer.duration));
-      const endTime = Math.max(startTime, Math.min(sample.endTime || buffer.duration, buffer.duration));
-      const duration = Math.max(0.001, endTime - startTime);
-
-      source.buffer = buffer;
-      source.playbackRate.value = Math.pow(2, pad.pitch / 12);
-      gain.gain.value = Math.max(0, Math.min(1, pad.volume * velocity));
-
-      source.connect(gain);
-      gain.connect(context.destination);
-      activeSources.add(source);
-      source.onended = () => activeSources.delete(source);
-      source.start(0, startTime, duration);
-    })
-    .catch((error: unknown) => {
-      console.error(error);
-    });
+  void audio.play().catch((error: unknown) => {
+    activeElements.delete(audio);
+    console.error(error);
+  });
 }
 
 export function stopAllSounds(): void {
@@ -140,6 +131,12 @@ export function stopAllSounds(): void {
   }
 
   activeSources.clear();
+
+  for (const audio of activeElements) {
+    audio.pause();
+  }
+
+  activeElements.clear();
 }
 
 export function setPadVolume(padId: PadId, volume: number): void {
