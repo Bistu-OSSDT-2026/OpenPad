@@ -84,6 +84,10 @@ function getFilterFrequency(filterCutoff: number): number {
   return filterCutoff <= 0 ? 20_000 : Math.min(12_000, Math.max(200, filterCutoff));
 }
 
+function getDelayWetLevel(delayFeedback: number): number {
+  return delayFeedback <= 0 ? 0 : Math.min(0.45, Math.max(0, delayFeedback * 0.5));
+}
+
 function ensureFxGraph(context: AudioContext): void {
   if (fxInputGain && masterGain && filterNode && bitcrusherNode) {
     return;
@@ -119,7 +123,7 @@ function ensureFxGraph(context: AudioContext): void {
   delayFeedbackGain.gain.value = currentFx.delayFeedback;
 
   delayDryGain = context.createGain();
-  delayDryGain.gain.value = 0.35;
+  delayDryGain.gain.value = getDelayWetLevel(currentFx.delayFeedback);
 
   fxInputGain.connect(bitcrusherNode);
   bitcrusherNode.connect(filterNode);
@@ -309,10 +313,9 @@ export function applyFxState(fx: Partial<FxState>): void {
   }
 
   if (fx.delayFeedback !== undefined && delayFeedbackGain && delayNode) {
-    delayFeedbackGain.gain.setValueAtTime(
-      Math.min(0.95, Math.max(0, fx.delayFeedback)),
-      audioContext.currentTime,
-    );
+    const value = Math.min(0.95, Math.max(0, fx.delayFeedback));
+    delayFeedbackGain.gain.setValueAtTime(value, audioContext.currentTime);
+    delayDryGain?.gain.setValueAtTime(getDelayWetLevel(value), audioContext.currentTime);
     delayNode.delayTime.setValueAtTime(0.3, audioContext.currentTime);
   }
 
