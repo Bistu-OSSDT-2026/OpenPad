@@ -31,3 +31,7 @@ npm run build
 All shared data must go through `src/store/useProjectStore.ts`.
 
 See `docs/BCDE_MODULE_CONTRACTS.md` for the exact B/C/D/E development standards, shared types, store actions, and module APIs.
+
+## License
+
+OpenPad Lab is released under the [MIT License](./LICENSE).
