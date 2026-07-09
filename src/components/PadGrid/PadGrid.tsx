@@ -28,6 +28,7 @@ function triggerPadFromUserInput(padId: string): void {
 export function PadGrid() {
   const pads = useProjectStore((state) => state.pads);
   const samples = useProjectStore((state) => state.samples);
+  const updateSample = useProjectStore((state) => state.updateSample);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -56,25 +57,52 @@ export function PadGrid() {
       <div className="grid grid-cols-4 gap-3">
         {pads.map((pad) => {
           const sample = samples.find((item) => item.id === pad.sampleId);
+          const sampleLength = sample ? Math.max(0.1, sample.endTime - sample.startTime) : 0;
+          const maxLength = sample ? Math.max(0.1, sample.duration - sample.startTime) : 8;
 
           return (
-            <button
+            <div
               key={pad.id}
-              type="button"
-              onClick={() => triggerPadFromUserInput(pad.id)}
-              className="aspect-square rounded-md border border-neutral-700 bg-neutral-800 p-3 text-left shadow-pad transition hover:border-signal hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-signal"
+              className="aspect-square rounded-md border border-neutral-700 bg-neutral-800 p-3 shadow-pad transition hover:border-signal hover:bg-neutral-700"
             >
-              <span className="block text-xl font-black text-white">{pad.name}</span>
-              <span className="mt-2 block truncate text-xs text-neutral-400">
-                {sample?.name ?? 'Empty'}
-              </span>
-              <span className="mt-4 block h-1 rounded bg-neutral-700">
-                <span
-                  className="block h-1 rounded bg-signal"
-                  style={{ width: `${pad.volume * 100}%` }}
+              <button
+                className="block w-full text-left focus:outline-none focus:ring-2 focus:ring-signal"
+                onClick={() => triggerPadFromUserInput(pad.id)}
+                type="button"
+              >
+                <span className="block text-xl font-black text-white">{pad.name}</span>
+                <span className="mt-2 block truncate text-xs text-neutral-400">
+                  {sample?.name ?? 'Empty'}
+                </span>
+              </button>
+              <label className="mt-4 block text-[10px] text-neutral-500">
+                <span className="mb-1 flex justify-between">
+                  <span>Length</span>
+                  <span>{sample ? `${sampleLength.toFixed(2)}s` : '--'}</span>
+                </span>
+                <input
+                  className="block h-1 w-full accent-signal"
+                  disabled={!sample}
+                  max={Math.min(8, maxLength)}
+                  min={0.1}
+                  onChange={(event) => {
+                    if (!sample) {
+                      return;
+                    }
+
+                    updateSample(sample.id, {
+                      endTime: Math.min(
+                        sample.duration,
+                        sample.startTime + Number(event.target.value),
+                      ),
+                    });
+                  }}
+                  step={0.05}
+                  type="range"
+                  value={sample ? Math.min(sampleLength, Math.min(8, maxLength)) : 0.1}
                 />
-              </span>
-            </button>
+              </label>
+            </div>
           );
         })}
       </div>

@@ -2,7 +2,7 @@ import type { SampleAsset, SampleId } from '../../types/project';
 import { useProjectStore } from '../../store/useProjectStore';
 import { getWaveformPeaks } from './sampleManager';
 
-const DEFAULT_CHOP_DURATION_SECONDS = 1;
+const DEFAULT_CHOP_DURATION_SECONDS = 0.75;
 const MIN_CHOP_DURATION_SECONDS = 0.1;
 const MAX_CHOP_DURATION_SECONDS = 8;
 
