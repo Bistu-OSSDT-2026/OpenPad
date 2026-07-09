@@ -86,66 +86,8 @@ export async function loadSampleBuffer(sample: SampleAsset): Promise<void> {
   await ensureSampleBuffer(sample);
 }
 
-export async function preloadAssignedPadBuffers(): Promise<void> {
-  const state = useProjectStore.getState();
-  const assignedSamples = state.pads
-    .map((pad) => getAssignedSample(pad.id))
-    .filter((sample): sample is SampleAsset => Boolean(sample));
-
-  await Promise.allSettled(assignedSamples.map((sample) => ensureSampleBuffer(sample)));
-}
-
 export function assignSampleToPad(padId: PadId, sampleId: SampleId): void {
   padAssignments.set(padId, sampleId);
-}
-
-function triggerPadWithBuffer(padId: PadId, velocity: number, buffer: AudioBuffer, sample: SampleAsset): boolean {
-  const context = audioContext;
-  const pad = useProjectStore.getState().pads.find((item) => item.id === padId);
-
-  if (!context || !pad || pad.muted) {
-    return false;
-  }
-
-  const source = context.createBufferSource();
-  const gain = context.createGain();
-  const startTime = Math.max(0, Math.min(sample.startTime, buffer.duration));
-  const endTime = Math.max(startTime, Math.min(sample.endTime || buffer.duration, buffer.duration));
-  const duration = Math.max(0.001, endTime - startTime);
-
-  source.buffer = buffer;
-  source.playbackRate.value = Math.pow(2, pad.pitch / 12);
-  gain.gain.value = Math.max(0, Math.min(1, pad.volume * velocity));
-  source.connect(gain);
-  gain.connect(context.destination);
-  activeSources.add(source);
-  source.onended = () => activeSources.delete(source);
-  source.start(0, startTime, duration);
-
-  return true;
-}
-
-function triggerPadWithMediaElement(velocity: number, padVolume: number, padPitch: number, sample: SampleAsset): void {
-  const audio = new Audio(sample.url);
-  const startTime = Math.max(0, sample.startTime);
-  const endTime = Math.max(startTime, sample.endTime || sample.duration || startTime + 2);
-  const durationMs = Math.max(50, (endTime - startTime) * 1000);
-
-  audio.volume = Math.max(0, Math.min(1, padVolume * velocity));
-  audio.playbackRate = Math.pow(2, padPitch / 12);
-  audio.currentTime = startTime;
-  activeElements.add(audio);
-  audio.onended = () => activeElements.delete(audio);
-
-  window.setTimeout(() => {
-    audio.pause();
-    activeElements.delete(audio);
-  }, durationMs);
-
-  void audio.play().catch((error: unknown) => {
-    activeElements.delete(audio);
-    console.error(error);
-  });
 }
 
 export function triggerPad(padId: PadId, velocity = 1): void {
@@ -157,15 +99,24 @@ export function triggerPad(padId: PadId, velocity = 1): void {
     return;
   }
 
-  const buffer = sampleBuffers.get(sample.id);
+  const audio = new Audio(sample.url);
+  const startTime = Math.max(0, sample.startTime);
+  const endTime = Math.max(startTime, sample.endTime || sample.duration || startTime + 2);
+  const durationMs = Math.max(50, (endTime - startTime) * 1000);
 
-  if (buffer && triggerPadWithBuffer(padId, velocity, buffer, sample)) {
-    return;
-  }
+  audio.volume = Math.max(0, Math.min(1, pad.volume * velocity));
+  audio.playbackRate = Math.pow(2, pad.pitch / 12);
+  audio.currentTime = startTime;
+  activeElements.add(audio);
+  audio.onended = () => activeElements.delete(audio);
 
-  triggerPadWithMediaElement(velocity, pad.volume, pad.pitch, sample);
+  window.setTimeout(() => {
+    audio.pause();
+    activeElements.delete(audio);
+  }, durationMs);
 
-  void ensureSampleBuffer(sample).catch((error: unknown) => {
+  void audio.play().catch((error: unknown) => {
+    activeElements.delete(audio);
     console.error(error);
   });
 }
