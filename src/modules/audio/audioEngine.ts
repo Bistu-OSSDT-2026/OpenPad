@@ -65,10 +65,13 @@ async function ensureSampleBuffer(sample: SampleAsset): Promise<void> {
     return;
   }
 
-  const loadPromise = decodeSample(sample).then((buffer) => {
-    sampleBuffers.set(sample.id, buffer);
-    loadingBuffers.delete(sample.id);
-  });
+  const loadPromise = decodeSample(sample)
+    .then((buffer) => {
+      sampleBuffers.set(sample.id, buffer);
+    })
+    .finally(() => {
+      loadingBuffers.delete(sample.id);
+    });
 
   loadingBuffers.set(sample.id, loadPromise);
   await loadPromise;
