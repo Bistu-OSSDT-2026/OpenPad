@@ -5,6 +5,7 @@ import { getWaveformPeaks } from './sampleManager';
 const DEFAULT_CHOP_DURATION_SECONDS = 0.75;
 const MIN_CHOP_DURATION_SECONDS = 0.1;
 const MAX_CHOP_DURATION_SECONDS = 8;
+const DEFAULT_TRIM_WINDOW_SECONDS = 5;
 
 function getAudioContext(): AudioContext {
   const AudioContextCtor =
@@ -62,8 +63,13 @@ export async function chopSample(
   const choppedSamples: SampleAsset[] = [];
 
   for (let index = 0; index < parts; index += 1) {
-    const startTime = Math.min(index * sliceSpacing, audioBuffer.duration);
-    const endTime = Math.min(audioBuffer.duration, startTime + sliceDuration);
+    const trimWindowStartTime = Math.min(index * sliceSpacing, audioBuffer.duration);
+    const trimWindowEndTime = Math.min(
+      audioBuffer.duration,
+      trimWindowStartTime + DEFAULT_TRIM_WINDOW_SECONDS,
+    );
+    const startTime = trimWindowStartTime;
+    const endTime = Math.min(trimWindowEndTime, startTime + sliceDuration);
     choppedSamples.push({
       id: crypto.randomUUID(),
       name: `${baseName} Slice ${index + 1}/${parts}`,
@@ -71,6 +77,8 @@ export async function chopSample(
       duration: audioBuffer.duration,
       startTime,
       endTime,
+      trimWindowStartTime,
+      trimWindowEndTime,
       sourceFileName: sample.sourceFileName ?? sample.name,
       waveformPeaks: getWaveformPeaks(audioBuffer, 32),
     });

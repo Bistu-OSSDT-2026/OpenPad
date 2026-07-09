@@ -20,7 +20,7 @@ const padKeys = new Map([
   ['3', 'pad-15'],
   ['4', 'pad-16'],
 ]);
-const MAX_PAD_SLICE_LENGTH_SECONDS = 3;
+const MIN_PAD_SLICE_LENGTH_SECONDS = 0.1;
 
 function triggerPadFromUserInput(padId: string): void {
   void initAudioEngine().finally(() => triggerPad(padId));
@@ -58,7 +58,19 @@ export function PadGrid() {
       <div className="grid grid-cols-4 gap-3">
         {pads.map((pad) => {
           const sample = samples.find((item) => item.id === pad.sampleId);
-          const sampleLength = sample ? Math.max(0.1, sample.endTime - sample.startTime) : 0;
+          const trimWindowStartTime = sample?.trimWindowStartTime ?? sample?.startTime ?? 0;
+          const trimWindowEndTime =
+            sample?.trimWindowEndTime ?? sample?.duration ?? trimWindowStartTime;
+          const trimWindowLength = Math.max(
+            MIN_PAD_SLICE_LENGTH_SECONDS,
+            trimWindowEndTime - trimWindowStartTime,
+          );
+          const startOffset = sample
+            ? Math.max(0, sample.startTime - trimWindowStartTime)
+            : 0;
+          const endOffset = sample
+            ? Math.max(MIN_PAD_SLICE_LENGTH_SECONDS, sample.endTime - trimWindowStartTime)
+            : MIN_PAD_SLICE_LENGTH_SECONDS;
 
           return (
             <div
@@ -75,30 +87,58 @@ export function PadGrid() {
                   {sample?.name ?? 'Empty'}
                 </span>
               </button>
-              <label className="mt-4 block text-[10px] text-neutral-500">
+              <div className="mt-4 grid gap-2 text-[10px] text-neutral-500">
                 <span className="mb-1 flex justify-between">
-                  <span>Length</span>
-                  <span>{sample ? `${sampleLength.toFixed(2)}s` : '--'}</span>
+                  <span>Trim</span>
+                  <span>
+                    {sample
+                      ? `${startOffset.toFixed(2)}-${endOffset.toFixed(2)}s`
+                      : '--'}
+                  </span>
                 </span>
-                <input
-                  className="block h-1 w-full accent-signal"
-                  disabled={!sample}
-                  max={MAX_PAD_SLICE_LENGTH_SECONDS}
-                  min={0.1}
-                  onChange={(event) => {
-                    if (!sample) {
-                      return;
-                    }
+                <label>
+                  <span className="sr-only">Start</span>
+                  <input
+                    className="block h-1 w-full accent-signal"
+                    disabled={!sample}
+                    max={sample ? Math.max(0, endOffset - MIN_PAD_SLICE_LENGTH_SECONDS) : 0}
+                    min={0}
+                    onChange={(event) => {
+                      if (!sample) {
+                        return;
+                      }
 
-                    updateSample(sample.id, {
-                      endTime: sample.startTime + Number(event.target.value),
-                    });
-                  }}
-                  step={0.05}
-                  type="range"
-                  value={sample ? Math.min(sampleLength, MAX_PAD_SLICE_LENGTH_SECONDS) : 0.1}
-                />
-              </label>
+                      updateSample(sample.id, {
+                        startTime: trimWindowStartTime + Number(event.target.value),
+                      });
+                    }}
+                    step={0.05}
+                    type="range"
+                    value={startOffset}
+                  />
+                </label>
+                <label>
+                  <span className="sr-only">End</span>
+                  <input
+                    className="block h-1 w-full accent-warning"
+                    disabled={!sample}
+                    max={trimWindowLength}
+                    min={sample ? startOffset + MIN_PAD_SLICE_LENGTH_SECONDS : MIN_PAD_SLICE_LENGTH_SECONDS}
+                    onChange={(event) => {
+                      if (!sample) {
+                        return;
+                      }
+
+                      updateSample(sample.id, {
+                        endTime: trimWindowStartTime + Number(event.target.value),
+                      });
+                    }}
+                    step={0.05}
+                    type="range"
+                    value={endOffset}
+                  />
+                </label>
+              </div>
             </div>
           );
         })}
