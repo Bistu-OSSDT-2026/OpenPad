@@ -1,4 +1,6 @@
 import type { FxState } from '../../types/project';
+import { createDefaultProject } from '../../modules/project/saveLoad';
+import { applyFxState, setFxParam } from '../../modules/effects/fxEngine';
 import { useProjectStore } from '../../store/useProjectStore';
 
 const controls: Array<{ key: keyof FxState; label: string; max: number; min: number; step: number }> = [
@@ -10,14 +12,16 @@ const controls: Array<{ key: keyof FxState; label: string; max: number; min: num
 
 export function FxPanel() {
   const fx = useProjectStore((state) => state.fx);
-  const setFx = useProjectStore((state) => state.setFx);
-  const resetFx = useProjectStore((state) => state.resetFx);
 
   return (
     <section className="rounded border border-line bg-panel p-4">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-bold uppercase text-neutral-200">FX</h2>
-        <button className="text-xs font-bold text-signal" onClick={resetFx} type="button">
+        <button
+          className="text-xs font-bold text-signal"
+          onClick={() => applyFxState(createDefaultProject().fx)}
+          type="button"
+        >
           Reset
         </button>
       </div>
@@ -31,7 +35,7 @@ export function FxPanel() {
             <input
               max={control.max}
               min={control.min}
-              onChange={(event) => setFx({ [control.key]: Number(event.target.value) })}
+              onChange={(event) => setFxParam(control.key, Number(event.target.value))}
               step={control.step}
               type="range"
               value={fx[control.key]}

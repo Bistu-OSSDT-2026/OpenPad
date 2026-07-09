@@ -1,11 +1,14 @@
 import { useProjectStore } from '../../store/useProjectStore';
+import {
+  playSequencer,
+  setBpm,
+  stopSequencer,
+  toggleStep,
+} from '../../modules/sequencer/sequencerEngine';
 
 export function Sequencer() {
   const pads = useProjectStore((state) => state.pads);
   const pattern = useProjectStore((state) => state.pattern);
-  const setBpm = useProjectStore((state) => state.setBpm);
-  const setSequencerPlaying = useProjectStore((state) => state.setSequencerPlaying);
-  const toggleStep = useProjectStore((state) => state.toggleStep);
 
   return (
     <section className="rounded border border-line bg-panel p-4">
@@ -22,7 +25,13 @@ export function Sequencer() {
           />
           <button
             className="rounded bg-warning px-3 py-2 text-xs font-bold text-neutral-950"
-            onClick={() => setSequencerPlaying(!pattern.isPlaying)}
+            onClick={() => {
+              if (pattern.isPlaying) {
+                stopSequencer();
+              } else {
+                playSequencer();
+              }
+            }}
             type="button"
           >
             {pattern.isPlaying ? 'Stop' : 'Play'}
